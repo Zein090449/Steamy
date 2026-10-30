@@ -1,0 +1,291 @@
+<Page x:Class="Steamy.Pages.DenuvoActivationPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:local="clr-namespace:Steamy.Pages"
+      ScrollViewer.CanContentScroll="False"
+      Background="{DynamicResource WorkspaceBackgroundBrush}">
+  <Page.Resources>
+    <ResourceDictionary><ResourceDictionary.MergedDictionaries><ResourceDictionary Source="/Steamy;component/Resources/ToolPageStyles.xaml"/></ResourceDictionary.MergedDictionaries>
+    <BooleanToVisibilityConverter x:Key="BoolVis" />
+    <local:CountToVisibilityConverter x:Key="CountVis"/>
+    <local:StringToVisibilityConverter x:Key="StringVis"/>
+    </ResourceDictionary>
+  </Page.Resources>
+
+  <ScrollViewer Style="{StaticResource PageScrollHostStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                Padding="28,28,28,24">
+    <StackPanel MaxWidth="780" HorizontalAlignment="Stretch">
+
+      <!-- Header -->
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <TextBlock Text="Denuvo Activation" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+        <ui:Button Style="{StaticResource BareInfoButton}" x:Name="ActivationHelpButton" Grid.Column="1" Appearance="Transparent"
+                   Icon="{ui:SymbolIcon Info24}" Width="40" Height="40" VerticalAlignment="Center"
+                   Click="ActivationHelp_Click" ToolTip="Denuvo activation information"
+                   AutomationProperties.Name="Denuvo activation information" />
+        <Popup x:Name="ActivationHelpPopup" PlacementTarget="{Binding ElementName=ActivationHelpButton}"
+               Placement="Bottom" StaysOpen="False" AllowsTransparency="True" PopupAnimation="None">
+          <Border Width="350" Padding="20" Margin="4" CornerRadius="16"
+                  Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                  PreviewKeyDown="ActivationHelp_PreviewKeyDown">
+            <StackPanel>
+              <TextBlock Text="How to get Denuvo activations without owning the game" FontSize="16" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+              <TextBlock Text="Join Discord.gg/pubslounge to get free legit Denuvo activations." FontSize="13" LineHeight="21"
+                         Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
+              <TextBlock Text="Read the community's pinned instructions, ask which games are available, and follow the steps for your activation request. You can also ask the community for help with setup."
+                         FontSize="12" LineHeight="20" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" Margin="0,10,0,16" />
+              <TextBlock FontSize="13" FontWeight="SemiBold">
+                <Hyperlink NavigateUri="https://discord.gg/pubslounge" RequestNavigate="ActivationCommunity_RequestNavigate">Join Pubs Lounge ↗</Hyperlink>
+              </TextBlock>
+            </StackPanel>
+          </Border>
+        </Popup>
+      </Grid>
+      <TextBlock Text="Choose your game and prepare an activation package."
+                 Style="{StaticResource PageSubtitleStyle}" Margin="0,2,0,0" />
+
+      <!-- Generator warning -->
+      <Border Margin="0,0,0,0" Padding="12,10" CornerRadius="10"
+              Background="{DynamicResource DangerSoftBrush}"
+              Visibility="{Binding HasDownloadError, Converter={StaticResource BoolVis}}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="Token generator not found. Browse to locate it or wait for auto-download."
+                     FontSize="12" Foreground="{DynamicResource DangerBrush}"
+                     VerticalAlignment="Center" TextWrapping="Wrap" />
+          <ui:Button Grid.Column="1" Content="Browse…"
+                     Command="{Binding BrowseToolCommand}"
+                     Appearance="Secondary" Height="28" FontSize="11" Margin="12,0,0,0" />
+        </Grid>
+      </Border>
+
+      <!-- Search -->
+      <TextBlock Text="GAME" Style="{StaticResource FieldLabelStyle}" Margin="0,20,0,6" />
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <ui:TextBox x:Name="SearchBox"
+                    Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                    PlaceholderText="e.g. 2358720 or Euro Truck Simulator 2"
+                    FontSize="13" Padding="12,10"
+                    KeyDown="SearchBox_KeyDown">
+          <ui:TextBox.Style>
+            <Style TargetType="ui:TextBox" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+              <Setter Property="IsEnabled" Value="True" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                  <Setter Property="IsEnabled" Value="False" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </ui:TextBox.Style>
+        </ui:TextBox>
+        <ui:ProgressRing Grid.Column="1" Width="18" Height="18" IsIndeterminate="True"
+                         Margin="10,0,0,0" VerticalAlignment="Center"
+                         Visibility="{Binding IsSearching, Converter={StaticResource BoolVis}}" />
+      </Grid>
+
+      <!-- Suggestions -->
+      <Border Margin="0,4,0,0" Padding="4" CornerRadius="12"
+              Background="{DynamicResource SurfaceElevatedBrush}"
+              BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+              Visibility="{Binding Suggestions.Count, Converter={StaticResource CountVis}}">
+        <Border.Effect>
+          <DropShadowEffect Color="#000000" Opacity="0.2" BlurRadius="24" ShadowDepth="6" Direction="270" />
+        </Border.Effect>
+        <ItemsControl ItemsSource="{Binding Suggestions}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border x:Name="SugRow" Padding="12,8" Margin="2,1"
+                      CornerRadius="8" Background="Transparent"
+                      Cursor="Hand" MouseLeftButtonDown="Suggestion_MouseDown">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <Border Background="{DynamicResource SurfaceSubtleBrush}" CornerRadius="6"
+                          Padding="8,3" Margin="0,0,10,0" VerticalAlignment="Center" MinWidth="58">
+                    <TextBlock Text="{Binding AppId}" FontFamily="Consolas" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" />
+                  </Border>
+                  <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="13"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </Border>
+              <DataTemplate.Triggers>
+                <Trigger SourceName="SugRow" Property="IsMouseOver" Value="True">
+                  <Setter TargetName="SugRow" Property="Background"
+                          Value="{DynamicResource ControlHoverBrush}" />
+                </Trigger>
+              </DataTemplate.Triggers>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+      <!-- Resolved game -->
+      <Border Margin="0,6,0,0" Padding="12,9" CornerRadius="10"
+              Background="{DynamicResource SuccessSoftBrush}"
+              Visibility="{Binding ResolvedName, Converter={StaticResource StringVis}}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="&#x2714;" FontSize="13" Foreground="{DynamicResource SuccessBrush}"
+                     VerticalAlignment="Center" Margin="0,0,8,0" />
+          <TextBlock FontSize="13" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+            <Run Text="{Binding ResolvedName, Mode=OneWay}" />
+          </TextBlock>
+        </StackPanel>
+      </Border>
+
+      <!-- ── SETTINGS CARD ────────────────────────────────── -->
+      <TextBlock Text="SETTINGS" Style="{StaticResource FieldLabelStyle}" Margin="0,22,0,6" />
+
+      <Border x:Name="ActivationSettings" Padding="16,14" CornerRadius="14"
+              Background="{DynamicResource SurfaceElevatedBrush}"
+              BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+        <StackPanel>
+
+          <!-- Row 1: Proxy + toggles -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+              <TextBlock Text="Proxy DLL" FontSize="11"
+                         Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,4" />
+              <ComboBox ItemsSource="{Binding ProxyDllOptions}"
+                        SelectedItem="{Binding ProxyDllName}"
+                        Width="140" FontSize="12" />
+            </StackPanel>
+            <CheckBox Grid.Column="2" IsChecked="{Binding IsCapcomGame}"
+                      VerticalAlignment="Bottom">
+              <TextBlock Text="Capcom / RE" FontSize="12"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+            </CheckBox>
+            <CheckBox Grid.Column="4" IsChecked="{Binding IsDebugColdLoader}"
+                      VerticalAlignment="Bottom">
+              <TextBlock Text="Debug ColdLoader" FontSize="12"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+            </CheckBox>
+          </Grid>
+
+          <!-- Separator -->
+          <Border Height="1" Margin="0,14,0,14"
+                  Background="{DynamicResource BorderSubtleBrush}" />
+
+          <Grid Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
+              <TextBlock Text="Without token (dummy)" FontSize="12.5"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+              <TextBlock Text="Prepares files only. Does not activate Denuvo." FontSize="11"
+                         Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
+            </StackPanel>
+            <ui:ToggleSwitch x:Name="WithoutTokenToggle" Grid.Column="1" IsChecked="{Binding DummyPackage}"
+                             VerticalAlignment="Center" AutomationProperties.Name="Without token (dummy)" />
+          </Grid>
+
+          <!-- Row 2: Launch script toggle -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Create launch.bat" FontSize="12.5"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       VerticalAlignment="Center" />
+            <ui:ToggleSwitch Grid.Column="1" IsChecked="{Binding CreateLaunchScript}" />
+          </Grid>
+
+          <!-- Launch fields (when toggled on) -->
+          <StackPanel Margin="0,12,0,0"
+                      Visibility="{Binding CreateLaunchScript, Converter={StaticResource BoolVis}}">
+
+            <TextBlock Text="Executable" FontSize="11"
+                       Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,4" />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ComboBox ItemsSource="{Binding LaunchExeList}"
+                        SelectedItem="{Binding SelectedLaunchExe}" FontSize="12" />
+              <ui:Button Grid.Column="1" Content="Browse…"
+                         Command="{Binding BrowseExeCommand}"
+                         Appearance="Secondary" Height="36" FontSize="11"
+                         Margin="6,0,0,0" Padding="12,0" />
+            </Grid>
+
+            <TextBlock Text="Configuration" FontSize="11"
+                       Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,10,0,4" />
+            <ComboBox ItemsSource="{Binding LaunchConfigList}"
+                      SelectedItem="{Binding SelectedLaunchConfig}"
+                      FontSize="12" HorizontalAlignment="Stretch" />
+
+            <TextBlock Text="Custom Parameters" FontSize="11"
+                       Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,10,0,4" />
+            <ui:TextBox Text="{Binding CustomLaunchParameters, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="-dx11 -windowed (overrides config)"
+                        FontSize="12" Padding="10,7" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Generate -->
+      <ui:Button Content="Generate Package" Command="{Binding GenerateCommand}"
+                 Appearance="Primary"
+                 Height="44" FontSize="14" FontWeight="SemiBold"
+                 HorizontalAlignment="Stretch"
+                 HorizontalContentAlignment="Center"
+                 Margin="0,18,0,0" />
+
+      <!-- Progress -->
+      <Border Margin="0,8,0,0" Padding="12,8" CornerRadius="10"
+              Background="{DynamicResource SurfaceSubtleBrush}"
+              Visibility="{Binding IsBusy, Converter={StaticResource BoolVis}}">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+          <ui:ProgressRing Width="14" Height="14" IsIndeterminate="True" />
+          <TextBlock Text="{Binding Status}" FontSize="12"
+                     Foreground="{DynamicResource TextSecondaryBrush}"
+                     VerticalAlignment="Center" Margin="8,0,0,0"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </Border>
+
+      <!-- Idle status -->
+      <TextBlock Text="{Binding Status}" FontSize="11" Margin="2,8,0,0"
+                 Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap">
+        <TextBlock.Style>
+          <Style TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Visible" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                <Setter Property="Visibility" Value="Collapsed" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </TextBlock.Style>
+      </TextBlock>
+
+    </StackPanel>
+  </ScrollViewer>
+</Page>

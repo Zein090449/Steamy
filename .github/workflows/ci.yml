@@ -1,0 +1,104 @@
+name: CI
+
+# Builds the app and runs the tests on every push and pull request, so a broken build shows up
+# on the branch instead of first appearing in the release workflow.
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test discovery selection
+        run: python -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Check source for embedded credentials
+        run: python scripts/check-source-secrets.py
+
+      - name: Test the provider relay without production credentials
+        run: |
+          python -m pip install -r server/provider-relay/requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s server/provider-relay -p 'test_relay.py'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test and build the pinned DepotDownloaderMod
+        run: python tools/DepotDownloaderMod/build.py
+
+      - name: Build the headless ControllerHost for integration tests
+        shell: pwsh
+        run: ./scripts/build-controller-host.ps1 -OutputDirectory tools/ControllerHost/runtime -SourcePackage
+
+      - name: Restore
+        run: dotnet restore Steamy.sln
+
+      - name: Build
+        run: dotnet build Steamy.sln -c Release --no-restore
+
+      - name: Test
+        env:
+          STEAMY_UI_ARTIFACTS: ${{ github.workspace }}/artifacts/ui
+          STEAMY_UI_LIBRARY_INSTALL_OFFSCREEN_ONLY: '1'
+        run: dotnet test Steamy.sln -c Release --no-build --logger "console;verbosity=normal" --logger trx --results-directory artifacts/test-results
+
+      - name: Report test failures
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/test-results -Filter *.trx -ErrorAction SilentlyContinue | ForEach-Object {
+            [xml]$results = Get-Content -LiteralPath $_.FullName
+            $results.SelectNodes("//*[local-name()='UnitTestResult' and @outcome='Failed']") | ForEach-Object {
+              $details = $_.InnerText.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error title=$($_.testName)::$details"
+            }
+          }
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Steamy-test-evidence
+          path: |
+            artifacts/test-results/
+            artifacts/ui/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Package Windows app
+        shell: pwsh
+        run: |
+          dotnet publish src/Steamy/Steamy.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o artifacts/win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md artifacts/win-x64/
+          Compress-Archive -Path artifacts/win-x64/* -DestinationPath artifacts/Steamy-win-x64.zip
+
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Steamy-win-x64
+          path: artifacts/Steamy-win-x64.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+

@@ -1,0 +1,145 @@
+using Microsoft.Extensions.DependencyInjection;
+using Steamy.ViewModels;
+
+namespace Steamy.Services;
+
+public static class ServiceRegistration
+{
+    public static IServiceCollection AddSteamyServices(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton<Wpf.Ui.Abstractions.INavigationViewPageProvider, NavigationViewPageProvider>();
+        services.AddSingleton<INavigationService, NavigationService>();
+        services.AddSingleton<IShellBackdropService, ShellBackdropService>();
+        services.AddSingleton<IAppDataStore, AppDataStore>();
+        services.AddSingleton<ILocalDatabase, SqliteLocalDatabase>();
+        services.AddSingleton<IDownloadQueueStore, DownloadQueueStore>();
+        services.AddSingleton<ISteamLibraryService, SteamLibraryService>();
+        services.AddSingleton<ILibrarySyncService, LibrarySyncService>();
+        services.AddSingleton<IDownloadedGameLibrary, DownloadedGameLibrary>();
+        services.AddSingleton<IPcGameScanService, PcGameScanService>();
+        services.AddSingleton<ISettingsService, JsonSettingsService>();
+        services.AddSingleton<IGameActivityService>(_ => new JsonGameActivityService());
+        services.AddSingleton<IPlayTimeService, PlayTimeService>();
+        services.AddSingleton<IGamePreferencesStore>(_ => new GamePreferencesStore());
+        services.AddSingleton<IGameProcessStarter, GameProcessStarter>();
+        services.AddSingleton<IControllerBackend, ControllerBackendService>();
+        services.AddSingleton<IWindowsControllers, WindowsControllers>();
+        services.AddSingleton<IControllerDrivers, ControllerDrivers>();
+        services.AddSingleton<IControllerGameProfiles, ControllerGameProfiles>();
+        services.AddSingleton<ControllersViewModel>();
+        services.AddSingleton<IGameLaunchService, GameLaunchService>();
+        services.AddSingleton<IGameDetailsDataService, SteamGameDetailsService>();
+        services.AddSingleton<GameDetailsViewModel>();
+        services.AddSingleton<ISecureCredentialService, DpapiCredentialService>();
+        services.AddSingleton<NotificationCenterViewModel>();
+        if (DiscordIntegration.Enabled)
+        {
+        services.AddSingleton<IDiscordSocialService, DiscordSocialService>();
+        services.AddSingleton<ICommunityInviteService, CommunityInviteService>();
+        services.AddSingleton<CommunityViewModel>();
+        services.AddSingleton<DiscordFriendsViewModel>();
+        services.AddSingleton<DiscordVoiceViewModel>();
+        services.AddSingleton<IGifSearchService, GifSearchService>();
+        services.AddSingleton<GifPickerViewModel>();
+        }
+        services.AddSingleton<UiTranslationService>();
+        services.AddSingleton<ILogDispatcher, WpfLogDispatcher>();
+        services.AddSingleton<ILoggingService, InMemoryLoggingService>();
+        services.AddSingleton<IDepotDownloaderService, DepotDownloaderService>();
+        services.AddSingleton<IDownloadManager>(sp => new DownloadManager(
+            sp.GetRequiredService<IAppDataStore>(),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<IDepotDownloaderService>(),
+            sp.GetRequiredService<IFileVerificationService>(),
+            sp.GetRequiredService<IDownloadQueueStore>(),
+            sp.GetRequiredService<ILoggingService>(),
+            sp.GetRequiredService<INotificationService>(),
+            sp.GetRequiredService<IRyuuGameDownloadService>(),
+            sp.GetRequiredService<IDownloadedGameLibrary>()
+        ));
+        services.AddSingleton<ISteamApiHealthService, DemoSteamApiHealthService>();
+        services.AddSingleton<IFileVerificationService, LocalFileVerificationService>();
+        services.AddSingleton<IDnsResolverService, DnsResolverService>();
+        services.AddSingleton<IEndpointProbeService>(_ => new HttpEndpointProbeService());
+        services.AddSingleton<IGameLocatorService, GameLocatorService>();
+        services.AddSingleton<IManifestService, LocalManifestService>();
+        services.AddSingleton<IProviderHealthService, DemoProviderHealthService>();
+        services.AddSingleton<IRyuuGeneratorService, DemoRyuuGeneratorService>();
+        services.AddSingleton<IDiskSpaceService, SystemDiskSpaceService>();
+        services.AddSingleton<INotificationService, DesktopNotificationService>();
+        services.AddSingleton<IArtworkService>(_ => new SteamArtworkService());
+        services.AddSingleton<IImagePipeline>(_ => ImagePipeline.Shared);
+        services.AddSingleton<ISteamCatalogService>(_ => new SteamCatalogService());
+        services.AddSingleton<ISpotlightService>(_ => new SpotlightCatalogService());
+        services.AddSingleton<ITrailerPreviewService>(_ => new TrailerPreviewService());
+        services.AddSingleton<IFreeManifestCatalogService, FreeManifestCatalogService>();
+        services.AddSingleton<IRyuuCatalogService>(sp => new RyuuCatalogService(sp.GetRequiredService<ISettingsService>()));
+        services.AddSingleton<IHubcapCatalogService>(sp => new HubcapCatalogService(sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<ISecureCredentialService>()));
+        services.AddSingleton<IDepotDownloaderCheckService>(_ => new DepotDownloaderCheckService());
+
+        services.AddSingleton<IGitHubToolDownloadService, GitHubToolDownloadService>();
+        services.AddSingleton<IUpdateService>(_ => new GitHubUpdateService());
+
+        services.AddSingleton<DashboardViewModel>();
+        services.AddSingleton<DownloadsViewModel>();
+        services.AddSingleton<LibraryViewModel>();
+        services.AddSingleton<DepotsViewModel>();
+        services.AddSingleton<ManifestViewModel>();
+        services.AddSingleton<BranchesViewModel>();
+        services.AddSingleton<AchievementsViewModel>();
+        services.AddSingleton<DenuvoGenerationViewModel>();
+        services.AddSingleton<ModFixesViewModel>();
+        services.AddSingleton<LocalGameCatalog>(_ => new LocalGameCatalog());
+        services.AddSingleton<LogsViewModel>();
+        services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<DepotDownloaderViewModel>();
+        services.AddSingleton<ISteamlessService, SteamlessService>();
+        services.AddSingleton<SteamlessViewModel>();
+        services.AddSingleton<ILocalToolRunner, LocalToolRunnerService>();
+        services.AddSingleton<DenuvoActivationViewModel>();
+        services.AddSingleton<ICreamInstallerDownloadService, CreamInstallerDownloadService>();
+        services.AddSingleton<IDenuvoGeneratorDownloadService, DenuvoGeneratorDownloadService>();
+        services.AddSingleton<CreamInstallerViewModel>();
+        services.AddSingleton<IGameFixProvider, DemoGameFixProvider>();
+        services.AddSingleton<IFixCatalogService>(sp => new FixCatalogService(sp.GetRequiredService<ISettingsService>(), sp.GetRequiredService<ISecureCredentialService>()));
+        services.AddSingleton<IGameFixDownloadService, GameFixDownloadService>();
+        services.AddSingleton<WebView2DownloadService>();
+        services.AddSingleton<IRyuuSecureDownloadService, RyuuSecureDownloadService>();
+        services.AddSingleton<IManifestSourceService>(sp => new ManifestSourceService(
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<ISecureCredentialService>(),
+            sp.GetRequiredService<IRyuuSecureDownloadService>(),
+            sp.GetRequiredService<ILoggingService>()));
+        services.AddSingleton<IBetterSteamToolsService, BetterSteamToolsService>();
+        services.AddSingleton<BetterSteamToolsViewModel>();
+        services.AddSingleton<ISteamDepotMetadataService, SteamDepotMetadataService>();
+        services.AddSingleton<IRyuuGameDownloadService>(sp => new RyuuGameDownloadService(
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<ISecureCredentialService>(),
+            sp.GetRequiredService<IRyuuSecureDownloadService>(),
+            sp.GetRequiredService<IManifestSourceService>(),
+            sp.GetRequiredService<ILoggingService>(),
+            depotMetadata: sp.GetRequiredService<ISteamDepotMetadataService>()));
+        services.AddSingleton<IManifestRefetchService>(sp => new ManifestRefetchService(
+            sp.GetRequiredService<IManifestSourceService>(),
+            sp.GetRequiredService<ILoggingService>()));
+        services.AddSingleton<ICreamApiService>(sp => new CreamApiService(sp.GetRequiredService<ILoggingService>()));
+        services.AddSingleton<CreamApiViewModel>();
+        services.AddSingleton<GameFixesViewModel>();
+        services.AddSingleton<GreenLumaViewModel>();
+        services.AddSingleton<FamilyShareViewModel>(sp => new FamilyShareViewModel(
+            sp.GetRequiredService<IAppDataStore>(),
+            sp.GetRequiredService<INavigationService>(),
+            sp.GetRequiredService<ILoggingService>(),
+            sp.GetRequiredService<ISettingsService>(),
+            sp.GetRequiredService<ISecureCredentialService>()));
+        services.AddSingleton<GoldbergViewModel>();
+        services.AddSingleton<UcOnlineService>();
+        services.AddSingleton<UcOnlineViewModel>();
+        services.AddSingleton<ScreamApiViewModel>();
+
+        return services;
+    }
+}

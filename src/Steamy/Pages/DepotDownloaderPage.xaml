@@ -1,0 +1,87 @@
+<Page x:Class="Steamy.Pages.DepotDownloaderPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:models="clr-namespace:Steamy.Models"
+      xmlns:controls="clr-namespace:Steamy.Controls"
+      ScrollViewer.CanContentScroll="False"
+      Background="{DynamicResource PageBackgroundBrush}">
+  <Page.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolVis" />
+    <Style x:Key="QueueListItem" TargetType="ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,10" />
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter>
+    </Style>
+  </Page.Resources>
+  <ScrollViewer controls:SmoothScroll.Enabled="True" Style="{StaticResource PageScrollHostStyle}" Padding="28,24,28,40">
+    <StackPanel MaxWidth="1440" HorizontalAlignment="Stretch">
+      <Grid Margin="0,0,0,20">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel><TextBlock Text="DepotDownloader" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="Choose your game and version. Downloads keeps your queue and progress." Style="{StaticResource PageSubtitleStyle}" /></StackPanel>
+        <WrapPanel Grid.Column="1" MaxWidth="180" HorizontalAlignment="Right"><ui:Button Icon="{ui:SymbolIcon ArrowClockwise24}" Command="{Binding CheckToolCommand}" ToolTip="Check downloader" AutomationProperties.Name="Check downloader" Margin="0,0,6,0"/><ui:Button Icon="{ui:SymbolIcon Settings24}" Command="{Binding OpenSettingsCommand}" ToolTip="Configure downloader and transfers" AutomationProperties.Name="Downloader settings"/></WrapPanel>
+      </Grid>
+      <Border x:Name="SetupGamePreview" Background="{DynamicResource GlassSurfaceBrush}" CornerRadius="18" MinHeight="124" Margin="0,0,0,18">
+        <Grid>
+          <Border CornerRadius="18"><Image controls:AsyncArtwork.Width="1280" controls:AsyncArtwork.Url="{Binding SelectedHeroUrl}" Stretch="UniformToFill" /></Border>
+          <Border CornerRadius="18" Background="{DynamicResource HeroShadeBrush}"/>
+          <Border CornerRadius="18" Background="{DynamicResource HeroBottomShadeBrush}"/>
+          <Grid Margin="18,16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <WrapPanel><Border Background="#604A4E58" CornerRadius="8" Padding="8,3"><TextBlock Text="{Binding ToolCheckLabel}" FontSize="10.5" FontWeight="SemiBold" Foreground="#E7EDF7" ToolTip="{Binding ToolStatus}"/></Border><TextBlock Text="{Binding SelectedGame.AppIdLabel}" Foreground="#C4CEDD" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/></WrapPanel>
+            <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Margin="0,18,0,0"><TextBlock Text="{Binding SelectedGame.Name, TargetNullValue='Choose your next download'}" FontSize="26" FontWeight="SemiBold" Foreground="#F5F8FE" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedGame.Name}"/><TextBlock Text="{Binding DepotSelectionLabel}" FontSize="11" Foreground="#C4CEDD" TextTrimming="CharacterEllipsis" ToolTip="{Binding DepotSelectionLabel}" Margin="0,5,0,0"/></StackPanel>
+          </Grid>
+        </Grid>
+      </Border>
+      <Border Background="{DynamicResource SurfaceElevatedBrush}" CornerRadius="16" Padding="16" Margin="0,0,0,18">
+        <StackPanel>
+          <TextBlock Text="Download setup" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,10" />
+          <TextBlock Text="Game" Style="{StaticResource CaptionStyle}" />
+          <ComboBox ItemsSource="{Binding Games}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedGame}" Margin="0,6,0,10" AutomationProperties.Name="Download game" />
+          <UniformGrid x:Name="VersionFields" Columns="3" Margin="0,0,-10,10">
+            <StackPanel Margin="0,0,10,8"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Depot" Style="{StaticResource CaptionStyle}"/><Button Grid.Column="1" Content="All depots" Command="{Binding UseAllDepotsCommand}" FontSize="10" Padding="5,1" ToolTip="Use all compatible depots for this game"/></Grid><ComboBox ItemsSource="{Binding Depots}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedDepot}" AutomationProperties.Name="Download depot" Margin="0,6,0,0" /></StackPanel>
+            <StackPanel Margin="0,0,10,8"><TextBlock Text="Branch" Style="{StaticResource CaptionStyle}" /><ComboBox ItemsSource="{Binding Branches}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedBranch}" AutomationProperties.Name="Download branch" Margin="0,6,0,0" /></StackPanel>
+            <StackPanel Margin="0,0,10,8"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Manifest" Style="{StaticResource CaptionStyle}"/><Button Grid.Column="1" Content="Latest" Command="{Binding UseLatestManifestCommand}" FontSize="10" Padding="5,1" ToolTip="Follow the selected branch instead of pinning an imported manifest"/></Grid><ComboBox ItemsSource="{Binding Manifests}" DisplayMemberPath="ManifestId" SelectedItem="{Binding SelectedManifest}" AutomationProperties.Name="Download manifest" Margin="0,6,0,0" /></StackPanel>
+          </UniformGrid>
+          <TextBlock Text="Target folder" Style="{StaticResource CaptionStyle}" />
+          <Grid Margin="0,6,0,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ui:TextBox Text="{Binding TargetFolder, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Choose a local folder" />
+            <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon FolderOpen24}" Click="BrowseTargetFolderButton_Click" ToolTip="Choose target folder" AutomationProperties.Name="Choose target folder" Margin="8,0,0,0" />
+          </Grid>
+          <Border x:Name="DownloadSelectionSummary" CornerRadius="10" Background="{DynamicResource SurfaceSubtleBrush}" Padding="12,10" Margin="0,0,0,10">
+            <StackPanel><WrapPanel><ui:SymbolIcon Symbol="DocumentCheckmark24" FontSize="15" Foreground="{DynamicResource AccentBrush}" Margin="0,0,7,0"/><TextBlock Text="{Binding BranchSelectionLabel}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}"/></WrapPanel>
+              <TextBlock Text="{Binding ManifestSelectionLabel}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+              <TextBlock Text="{Binding SelectionSizeLabel}" FontSize="10.5" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+            </StackPanel>
+          </Border>
+          <CheckBox IsChecked="{Binding AuthorizationConfirmed}" Margin="0,0,0,8"><TextBlock Text="I am authorized to access this content." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" /></CheckBox>
+          <WrapPanel><ui:Button Content="Add to queue" Icon="{ui:SymbolIcon Add24}" Appearance="Primary" Command="{Binding AddToQueueCommand}" Margin="0,0,8,0" /><ui:Button Content="Open Downloads" Icon="{ui:SymbolIcon ArrowDownload24}" Command="{Binding OpenDownloadsCommand}" /></WrapPanel>
+          <TextBlock Text="{Binding LastMessage}" Style="{StaticResource BodyTextStyle}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0" />
+        </StackPanel>
+      </Border>
+      <Expander Header="Downloader status &amp; setup" Margin="0,0,0,16"><StackPanel Margin="12,8"><TextBlock Text="{Binding ToolStatus}" TextWrapping="Wrap" Style="{StaticResource BodyTextStyle}"/><TextBlock Text="{Binding ToolPath}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,5,0,0"/><TextBlock Text="{Binding ToolVersion, StringFormat='Version: {0}'}" Style="{StaticResource CaptionStyle}" Margin="0,4,0,0"/><ui:Button Content="Open downloader settings" Icon="{ui:SymbolIcon Settings24}" Command="{Binding OpenSettingsCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/></StackPanel></Expander>
+      <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Queue" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="{Binding QueueSummary}" Style="{StaticResource CaptionStyle}" Margin="0,4,0,0" /></StackPanel><ui:Button Grid.Column="1" Content="Start queued" Icon="{ui:SymbolIcon Play24}" Command="{Binding StartQueuedCommand}" /></Grid>
+      <ListBox ItemsSource="{Binding QueueJobs}" MaxHeight="420" ItemContainerStyle="{StaticResource QueueListItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+        <ListBox.ItemTemplate><DataTemplate>
+          <Border Background="{DynamicResource SurfaceSubtleBrush}" CornerRadius="12" Padding="14">
+            <StackPanel>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="{Binding GameName}" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Grid.Column="1" Text="{Binding StateLabel}" Style="{StaticResource CaptionStyle}" Margin="12,0,0,0" /></Grid>
+              <controls:SmoothProgressBar SmoothValue="{Binding Progress}" IsIndeterminate="{Binding IsProgressIndeterminate}" Maximum="100" Height="5" Style="{StaticResource JobProgressBar}" Margin="0,10,0,8" />
+              <TextBlock Text="{Binding Status}" Style="{StaticResource CaptionStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" />
+              <WrapPanel Margin="0,8,0,0">
+                <ui:Button Content="Start" Style="{StaticResource StartButton}" Command="{Binding DataContext.StartCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+                <ui:Button Content="Pause" Style="{StaticResource PauseButton}" Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+                <ui:Button Content="Resume" Style="{StaticResource ResumeButton}" Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+                <ui:Button Content="Retry" Style="{StaticResource RetryButton}" Command="{Binding DataContext.RetryCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+                <ui:Button Content="Cancel" Style="{StaticResource CancelButton}" Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+                <ui:Button Content="Remove" Style="{StaticResource RemoveButton}" Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Padding="10,5" Margin="0,0,6,4" />
+              </WrapPanel>
+              <Expander Header="Details" Margin="0,4,0,0"><StackPanel><TextBlock Text="{Binding TargetFolder}" TextWrapping="Wrap" Style="{StaticResource CaptionStyle}" />
+                <WrapPanel Margin="0,8,0,0"><ui:Button Content="Verify &amp; repair" Style="{StaticResource RepairButton}" Command="{Binding DataContext.RepairCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Margin="0,0,6,4" /><ui:Button Content="Check local files" Style="{StaticResource CompletedOnlyButton}" Command="{Binding DataContext.VerifyCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Margin="0,0,6,4" /><ui:Button Content="Copy folder" Style="{StaticResource CompletedOnlyButton}" Command="{Binding DataContext.CopyFolderCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Margin="0,0,6,4" /></WrapPanel><TextBox Text="{Binding ProcessLog, Mode=OneWay}" IsReadOnly="True" MaxHeight="120" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" FontSize="11" /></StackPanel></Expander>
+            </StackPanel>
+          </Border>
+        </DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+    </StackPanel>
+  </ScrollViewer>
+</Page>

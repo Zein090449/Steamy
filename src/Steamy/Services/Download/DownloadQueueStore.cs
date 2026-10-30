@@ -1,0 +1,207 @@
+using System.Collections.ObjectModel;
+using System.IO;
+using Steamy.Models;
+
+namespace Steamy.Services;
+
+/// <summary>
+/// Keeps the download queue across restarts. Only non-secret job metadata is stored, and a job
+/// that was interrupted by a shutdown is restored as interrupted instead of pretending it
+/// finished, so the user decides whether it continues into the same folder.
+/// </summary>
+public interface IDownloadQueueStore
+{
+    Task RestoreAsync(ObservableCollection<DownloadJob> jobs, bool autoResume, CancellationToken cancellationToken = default);
+    Task SaveAsync(DownloadJob job, CancellationToken cancellationToken = default);
+    Task RemoveAsync(DownloadJob job, CancellationToken cancellationToken = default);
+}
+
+public sealed record DownloadQueuePosition(Guid JobId, long Position);
+public sealed record DownloadQueuePriority(Guid JobId, DownloadPriority Priority);
+
+/// <summary>Persists a complete reorder in one transaction, without replacing job progress.</summary>
+public interface IDownloadQueueOrderingStore
+{
+    Task SavePositionsAsync(IReadOnlyList<DownloadQueuePosition> positions, CancellationToken cancellationToken = default);
+    Task SavePriorityAsync(DownloadQueuePriority priority, CancellationToken cancellationToken = default);
+}
+
+public sealed class DownloadQueueStore : IDownloadQueueStore, IDownloadQueueOrderingStore
+{
+    private readonly ILocalDatabase _database;
+    private readonly ILoggingService _logging;
+
+    public DownloadQueueStore(ILocalDatabase database, ILoggingService logging)
+    {
+        _database = database;
+        _logging = logging;
+    }
+
+    public async Task RestoreAsync(ObservableCollection<DownloadJob> jobs, bool autoResume, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(jobs);
+
+        IReadOnlyList<PersistedDownloadJob> rows;
+        try
+        {
+            // No ConfigureAwait(false) here: the collection is bound to the UI, so it must be
+            // filled on the thread that called this method.
+            rows = await Task.Run(() => _database.LoadDownloadJobsAsync(cancellationToken), cancellationToken);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException)
+        {
+            _logging.Add(LogLevel.Warning, "DownloadManager", $"The stored download queue could not be read: {exception.GetType().Name}.");
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var known = jobs.Select(job => job.Id).ToHashSet();
+        var additions = new List<DownloadJob>();
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (known.Add(row.Id)) additions.Add(ToJob(row, autoResume));
+        }
+        if (additions.Count > 0)
+        {
+            // Restoring history is one queue update. Existing live jobs retain
+            // their identity, progress and active operations; only missing IDs append.
+            if (jobs is RangeObservableCollection<DownloadJob> range) range.ReplaceWith(jobs.Concat(additions));
+            else foreach (var job in additions) jobs.Add(job);
+            _logging.Add(LogLevel.Info, "DownloadManager", $"{additions.Count} stored job(s) restored; interrupted jobs keep their target folder.");
+        }
+    }
+
+    public async Task SaveAsync(DownloadJob job, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        // Microsoft.Data.Sqlite's async methods perform synchronous disk work. Snapshot
+        // the UI model before moving that work away from the dispatcher.
+        var row = ToRow(job);
+        try
+        {
+            await Task.Run(() => _database.SaveDownloadJobAsync(row, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException)
+        {
+            _logging.Add(LogLevel.Warning, "DownloadManager", $"Queue state could not be stored: {exception.GetType().Name}.");
+            throw new DownloadQueuePersistenceException("The download queue could not be saved.", exception);
+        }
+    }
+
+    public async Task SavePositionsAsync(IReadOnlyList<DownloadQueuePosition> positions, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(positions);
+        if (_database is not IDownloadQueueOrderingDatabase ordering)
+            throw new InvalidOperationException("This database does not support saving queue order atomically.");
+        var snapshot = positions.ToArray();
+        try { await Task.Run(() => ordering.SaveDownloadPositionsAsync(snapshot, cancellationToken), cancellationToken).ConfigureAwait(false); }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException)
+        {
+            _logging.Add(LogLevel.Warning, "DownloadManager", $"Queue order could not be stored: {exception.GetType().Name}.");
+            throw new DownloadQueuePersistenceException("The download queue order could not be saved.", exception);
+        }
+    }
+
+    public async Task SavePriorityAsync(DownloadQueuePriority priority, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(priority);
+        if (_database is not IDownloadQueueOrderingDatabase ordering)
+            throw new InvalidOperationException("This database does not support saving queue priority.");
+        try { await Task.Run(() => ordering.SaveDownloadPriorityAsync(priority, cancellationToken), cancellationToken).ConfigureAwait(false); }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException)
+        {
+            _logging.Add(LogLevel.Warning, "DownloadManager", $"Queue priority could not be stored: {exception.GetType().Name}.");
+            throw new DownloadQueuePersistenceException("The download queue priority could not be saved.", exception);
+        }
+    }
+
+    public async Task RemoveAsync(DownloadJob job, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        try
+        {
+            await Task.Run(() => _database.DeleteDownloadJobAsync(job.Id, cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException or IOException or UnauthorizedAccessException)
+        {
+            _logging.Add(LogLevel.Warning, "DownloadManager", $"Queue entry could not be removed: {exception.GetType().Name}.");
+            throw new DownloadQueuePersistenceException("The download could not be removed from the saved queue.", exception);
+        }
+    }
+
+    public static DownloadJob ToJob(PersistedDownloadJob row, bool autoResume)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var job = new DownloadJob
+        {
+            Id = row.Id,
+            AppId = row.AppId,
+            GameName = row.GameName,
+            CoverColor = row.CoverColor,
+            CoverGlyph = row.CoverGlyph,
+            CoverImageUrl = row.CoverImageUrl,
+            TargetFolder = row.TargetFolder,
+            DepotId = row.DepotId,
+            Branch = row.Branch,
+            ManifestId = row.ManifestId,
+            AuthorizationConfirmed = row.AuthorizationConfirmed,
+            TotalSize = row.TotalSize,
+            Started = row.Started,
+            Priority = row.Priority,
+            QueuePosition = row.QueuePosition,
+            Downloaded = row.Downloaded,
+            DownloadMode = row.DownloadMode
+        };
+
+        var state = DownloadJobPolicy.RestoreState(row.State, autoResume);
+        Enum.TryParse<DownloadJobState>(row.State, out var savedState);
+
+        if (savedState is DownloadJobState.Preparing or DownloadJobState.Downloading or DownloadJobState.Verifying)
+        {
+            // "Queued" keeps the job in the active list so one click on Start/Resume continues it;
+            // nothing is started on its own at app launch — that is a deliberate user action.
+            job.State = state;
+            job.Status = autoResume
+                ? "Interrupted while the app was closed — press Start to continue in the same folder"
+                : "Interrupted while the app was closed — press Resume to continue in the same folder";
+            job.Progress = double.IsFinite(row.Progress) ? Math.Clamp(row.Progress, 0, 100) : 0;
+            return job;
+        }
+
+        job.State = state;
+        job.Progress = double.IsFinite(row.Progress) ? Math.Clamp(row.Progress, 0, 100) : 0;
+        job.Status = row.Status;
+        if (job.IsTerminal) job.Finished = row.UpdatedAt;
+        return job;
+    }
+
+    public static PersistedDownloadJob ToRow(DownloadJob job)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        return new PersistedDownloadJob(
+            job.Id,
+            job.AppId,
+            job.GameName,
+            job.CoverColor,
+            job.CoverGlyph,
+            job.TargetFolder,
+            job.DepotId,
+            job.Branch,
+            job.ManifestId,
+            job.AuthorizationConfirmed,
+            job.State.ToString(),
+            job.Progress,
+            job.Status,
+            job.TotalSize,
+            job.Downloaded,
+            job.Priority,
+            job.Started,
+            DateTime.Now,
+            job.CoverImageUrl,
+            job.DownloadMode,
+            job.QueuePosition);
+    }
+}

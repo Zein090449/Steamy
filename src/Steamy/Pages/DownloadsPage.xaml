@@ -1,0 +1,305 @@
+<Page x:Class="Steamy.Pages.DownloadsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:controls="clr-namespace:Steamy.Controls"
+      ScrollViewer.CanContentScroll="False" FontFamily="{DynamicResource SteamyFontFamily}" UseLayoutRounding="True" SnapsToDevicePixels="True"
+      TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="Auto"
+      RenderOptions.ClearTypeHint="Auto" Background="{DynamicResource DeckBackground}">
+  <Page.Resources>
+    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+      <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+    </Style>
+    <BooleanToVisibilityConverter x:Key="BoolVis"/>
+    <controls:NextDownloadVisibilityConverter x:Key="NextDownloadVisibility"/>
+    <CollectionViewSource x:Key="DeckQueueView" Source="{Binding QueueJobs}" IsLiveGroupingRequested="True"><CollectionViewSource.GroupDescriptions><PropertyGroupDescription PropertyName="DeckSection"/></CollectionViewSource.GroupDescriptions></CollectionViewSource>
+    <SolidColorBrush x:Key="DeckBackground" Color="#000000"/>
+    <SolidColorBrush x:Key="DeckHeroBackground" Color="#00000000"/>
+    <SolidColorBrush x:Key="DeckText" Color="#F1F2F3"/>
+    <SolidColorBrush x:Key="DeckSecondary" Color="#B8B6B4"/>
+    <SolidColorBrush x:Key="DeckMuted" Color="#89949E"/>
+    <SolidColorBrush x:Key="DeckLine" Color="#3B444D"/>
+    <SolidColorBrush x:Key="DeckBlue" Color="#1A9FFF"/>
+    <SolidColorBrush x:Key="DeckGreen" Color="#A4D007"/>
+    <Style x:Key="ReferenceDownloadProgress" TargetType="ProgressBar">
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ProgressBar">
+        <Grid ClipToBounds="True">
+          <Border x:Name="PART_Track" Background="{TemplateBinding Background}" CornerRadius="2"/>
+          <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}" HorizontalAlignment="Left" CornerRadius="2"/>
+          <Grid x:Name="UnknownActivity" Visibility="Collapsed"><Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions><Border Grid.Column="1" Background="{TemplateBinding Foreground}" CornerRadius="2" Opacity="0.5"/></Grid>
+        </Grid>
+        <ControlTemplate.Triggers><Trigger Property="IsIndeterminate" Value="True"><Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/><Setter TargetName="UnknownActivity" Property="Visibility" Value="Visible"/></Trigger></ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <LinearGradientBrush x:Key="DeckArtworkFade" StartPoint="0,0" EndPoint="1,0">
+      <GradientStop Color="#00000000" Offset="0"/>
+      <GradientStop Color="#10000000" Offset="0.35"/>
+      <GradientStop Color="#A0000000" Offset="0.65"/>
+      <GradientStop Color="#E0000000" Offset="1"/>
+    </LinearGradientBrush>
+    <Style x:Key="DeckButton" TargetType="ui:Button">
+      <Setter Property="Background" Value="{DynamicResource DeckButtonBackground}"/><Setter Property="Foreground" Value="{DynamicResource DeckText}"/>
+      <Setter Property="Padding" Value="10,8"/><Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{StaticResource GalleryKeyboardFocus}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ui:Button">
+        <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}" BorderBrush="{DynamicResource DeckButtonBorder}" BorderThickness="1">
+          <Grid><Border CornerRadius="8" Background="{DynamicResource DeckButtonHover}" Opacity="0" IsHitTestVisible="False" controls:DownloadHoverGlow.IsEnabled="True"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <ContentPresenter x:Name="PART_IconPresenter" Content="{TemplateBinding Icon}" VerticalAlignment="Center" Margin="0,0,5,0"/>
+            <ContentPresenter x:Name="PART_ContentPresenter" Content="{TemplateBinding Content}" VerticalAlignment="Center"/>
+          </StackPanel></Grid>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="Content" Value="{x:Null}"><Setter TargetName="PART_IconPresenter" Property="Margin" Value="0"/><Setter TargetName="PART_ContentPresenter" Property="Visibility" Value="Collapsed"/></Trigger>
+          <Trigger Property="Content" Value=""><Setter TargetName="PART_IconPresenter" Property="Margin" Value="0"/><Setter TargetName="PART_ContentPresenter" Property="Visibility" Value="Collapsed"/></Trigger>
+          <Trigger Property="Icon" Value="{x:Null}"><Setter TargetName="PART_IconPresenter" Property="Visibility" Value="Collapsed"/></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.4"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="DeckPause" TargetType="ui:Button" BasedOn="{StaticResource DeckButton}">
+      <Setter Property="Visibility" Value="Collapsed"/><Setter Property="Background" Value="{DynamicResource DeckHeroBackground}"/>
+      <Style.Triggers><DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="DeckResume" TargetType="ui:Button" BasedOn="{StaticResource DeckButton}">
+      <Setter Property="Visibility" Value="Collapsed"/><Setter Property="Background" Value="{DynamicResource DeckHeroBackground}"/>
+      <Style.Triggers><DataTrigger Binding="{Binding IsPaused}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="DeckContinue" TargetType="ui:Button" BasedOn="{StaticResource DeckButton}">
+      <Setter Property="Visibility" Value="Collapsed"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding StateLabel}" Value="Queued"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding StateLabel}" Value="Paused"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+        <DataTrigger Binding="{Binding StateLabel}" Value="Failed"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="DeckCancel" TargetType="ui:Button" BasedOn="{StaticResource DeckButton}">
+      <Setter Property="Background" Value="#16FFFFFF"/>
+      <Setter Property="Foreground" Value="#F4CCCC"/>
+      <Style.Triggers><DataTrigger Binding="{Binding IsTerminal}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="DeckRemove" TargetType="ui:Button" BasedOn="{StaticResource DeckButton}">
+      <Setter Property="Visibility" Value="Collapsed"/>
+      <Style.Triggers><DataTrigger Binding="{Binding IsTerminal}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+    </Style>
+    <Style x:Key="DeckFooterButton" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource DeckText}"/><Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="10,8"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{StaticResource GalleryKeyboardFocus}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/></Border><ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#28333F"/></Trigger>
+        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="#414B57"/></Trigger>
+      </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="DeckKeycap" TargetType="Border"><Setter Property="Background" Value="#D6DADC"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="6,2"/><Setter Property="Margin" Value="0,0,8,0"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+    <Style x:Key="DeckRow" TargetType="Border" BasedOn="{StaticResource JobCardEntrance}">
+      <Setter Property="BorderBrush" Value="{DynamicResource GlassBorderBrush}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="14,12"/><Setter Property="CornerRadius" Value="16"/><Setter Property="Background" Value="{DynamicResource DeckHeroBackground}"/>
+    </Style>
+    <Style x:Key="QueuedMenuAction" TargetType="MenuItem"><Setter Property="IsEnabled" Value="False"/><Style.Triggers><DataTrigger Binding="{Binding CommandParameter.StateLabel, RelativeSource={RelativeSource Self}}" Value="Queued"><Setter Property="IsEnabled" Value="True"/></DataTrigger></Style.Triggers></Style>
+    <Style x:Key="CancelMenuAction" TargetType="MenuItem"><Style.Triggers><DataTrigger Binding="{Binding CommandParameter.IsTerminal, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers></Style>
+    <Style x:Key="RemoveMenuAction" TargetType="MenuItem"><Setter Property="IsEnabled" Value="False"/><Style.Triggers><DataTrigger Binding="{Binding CommandParameter.IsTerminal, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="IsEnabled" Value="True"/></DataTrigger></Style.Triggers></Style>
+    <Style x:Key="RepairMenuAction" TargetType="MenuItem"><Setter Property="IsEnabled" Value="False"/><Style.Triggers><DataTrigger Binding="{Binding CommandParameter.CanRepair, RelativeSource={RelativeSource Self}}" Value="True"><Setter Property="IsEnabled" Value="True"/></DataTrigger></Style.Triggers></Style>
+    <DataTemplate x:Key="JobRowTemplate">
+      <Border Style="{StaticResource DeckRow}" DataContextChanged="DownloadAmbient_TargetChanged" MouseEnter="DownloadAmbient_Enter" MouseLeave="DownloadAmbient_Leave" GotKeyboardFocus="DownloadAmbient_Focus" LostKeyboardFocus="DownloadAmbient_Blur">
+        <Grid><Border Background="#182F5573" Opacity="0" IsHitTestVisible="False" controls:DownloadHoverGlow.IsEnabled="True"/><Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Grid x:Name="RowArtwork" Width="108" Height="62" Margin="0,0,16,0" controls:RoundedClip.Radius="9">
+            <Border Background="{Binding CoverColor}"><TextBlock Text="{Binding CoverGlyph}" Foreground="#70FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="24"/></Border>
+            <Border><Image controls:AsyncArtwork.Width="400" controls:AsyncArtwork.Url="{Binding HeaderArtUrl}" Stretch="UniformToFill" /></Border>
+          </Grid>
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,18,0">
+            <TextBlock Text="{Binding GameName}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding GameName}"/>
+            <TextBlock Text="{Binding DeckQueueSize}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource DeckSecondary}" Margin="0,5,0,0"/>
+            <TextBlock Text="{Binding Status}" FontSize="13" Foreground="{DynamicResource DeckSecondary}" TextWrapping="Wrap" MaxHeight="38" ToolTip="{Binding Status}">
+              <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding StateLabel}" Value="Failed"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+            </TextBlock>
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <StackPanel x:Name="RowProgress" Width="220" Margin="0,0,20,0" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Progress, StringFormat='{}{0:0} % COMPLETED'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DeckSecondary}" HorizontalAlignment="Right" Margin="0,0,0,5"/>
+              <controls:SmoothProgressBar SmoothValue="{Binding Progress}" IsIndeterminate="{Binding IsProgressIndeterminate}" Height="4" Maximum="100" Style="{StaticResource JobProgressBar}" Foreground="{DynamicResource DeckLine}" Background="{DynamicResource DeckLine}"/>
+            </StackPanel>
+            <TextBlock x:Name="NextLabel" Text="NEXT" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource DeckMuted}" Margin="0,0,20,0" VerticalAlignment="Center"><TextBlock.Visibility><MultiBinding Converter="{StaticResource NextDownloadVisibility}"><Binding/><Binding Path="DataContext.NextQueuedJob" RelativeSource="{RelativeSource AncestorType=Page}"/></MultiBinding></TextBlock.Visibility></TextBlock>
+            <ui:Button Width="42" Height="42" Padding="0" Style="{StaticResource DeckContinue}" AutomationProperties.Name="Continue download" ToolTip="Start or continue download" Command="{Binding DataContext.ContinueCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}"><ui:Button.Icon><ui:SymbolIcon Symbol="ArrowDownload24" FontSize="24" /></ui:Button.Icon></ui:Button>
+            <ui:Button Width="42" Height="42" Padding="0" Style="{StaticResource DeckPause}" AutomationProperties.Name="Pause" ToolTip="Download pausieren" Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}"><ui:Button.Icon><ui:SymbolIcon Symbol="Pause24" FontSize="24" /></ui:Button.Icon></ui:Button>
+            <ui:Button Width="42" Height="42" Padding="0" Style="{StaticResource CompletedOnlyButton}" AutomationProperties.Name="Open folder" Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}"><ui:Button.Icon><ui:SymbolIcon Symbol="FolderOpen24" FontSize="24" /></ui:Button.Icon></ui:Button>
+            <ui:Button Width="36" Height="42" Padding="0" Margin="8,0,0,0" Style="{StaticResource DeckCancel}" AutomationProperties.Name="Cancel queued download" ToolTip="Cancel download" Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}"><ui:Button.Icon><ui:SymbolIcon Symbol="Dismiss24" FontSize="20"/></ui:Button.Icon></ui:Button>
+            <ui:Button Width="40" Height="42" Padding="0" Margin="8,0,0,0" Style="{StaticResource DeckRemove}" AutomationProperties.Name="Remove history entry" ToolTip="Remove from history – game files are kept" Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}"><ui:Button.Icon><ui:SymbolIcon Symbol="Delete24" FontSize="20"/></ui:Button.Icon></ui:Button>
+            <ui:Button Width="32" Height="42" Padding="0" Margin="8,0,0,0" Background="Transparent" Style="{StaticResource DeckButton}" AutomationProperties.Name="Queue options" ToolTip="Optionen" Click="QueueMenu_Click" Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}">
+              <ui:Button.Icon><ui:SymbolIcon Symbol="MoreHorizontal24" FontSize="22" /></ui:Button.Icon>
+              <ui:Button.ContextMenu><ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                <MenuItem Header="Move up" Style="{StaticResource QueuedMenuAction}" Command="{Binding MoveUpCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                <MenuItem Header="Move down" Style="{StaticResource QueuedMenuAction}" Command="{Binding MoveDownCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                <MenuItem Header="Change priority" Style="{StaticResource QueuedMenuAction}" Command="{Binding CyclePriorityCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                <MenuItem Header="Cancel" Style="{StaticResource CancelMenuAction}" Command="{Binding CancelCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                <MenuItem Header="Remove" Style="{StaticResource RemoveMenuAction}" Command="{Binding RemoveCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                <MenuItem Header="Verify and repair" Style="{StaticResource RepairMenuAction}" Command="{Binding RepairCommand}" CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+              </ContextMenu></ui:Button.ContextMenu>
+            </ui:Button>
+          </StackPanel>
+        </Grid></Grid>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding HasMeasuredProgress}" Value="False"><Setter TargetName="RowProgress" Property="Visibility" Value="Collapsed"/></DataTrigger>
+        <DataTrigger Binding="{Binding Visibility, ElementName=NextLabel}" Value="Visible"><Setter TargetName="RowProgress" Property="Visibility" Value="Collapsed"/></DataTrigger>
+        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=Page}}" Value="Compact"><Setter TargetName="RowArtwork" Property="Width" Value="112"/><Setter TargetName="RowArtwork" Property="Height" Value="53"/><Setter TargetName="RowArtwork" Property="Margin" Value="0,0,14,0"/><Setter TargetName="RowProgress" Property="Visibility" Value="Collapsed"/></DataTrigger>
+        <DataTrigger Binding="{Binding DataContext.NextQueuedJob, RelativeSource={RelativeSource AncestorType=Page}}" Value="{x:Null}"><Setter TargetName="NextLabel" Property="Visibility" Value="Collapsed"/></DataTrigger>
+        <DataTrigger Binding="{Binding IsTerminal}" Value="True"><Setter TargetName="RowProgress" Property="Visibility" Value="Collapsed"/><Setter TargetName="NextLabel" Property="Visibility" Value="Collapsed"/></DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+  </Page.Resources>
+  <Grid x:Name="DeckLayout" Background="Transparent">
+    <controls:ShellBackdropView x:Name="DownloadSceneBackdrop" IsPageBackdrop="True" BaseBrush="{DynamicResource DeckBackground}"/>
+    <Border x:Name="DownloadPageAmbientA" IsHitTestVisible="False" Opacity="0"/>
+    <Border x:Name="DownloadPageAmbientB" IsHitTestVisible="False" Opacity="0"/>
+    <Grid x:Name="DeckContent" MaxWidth="1120" Margin="24,18,24,20" HorizontalAlignment="Stretch">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <StackPanel x:Name="FeaturedPanel">
+        <Grid Margin="0,0,0,22"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <StackPanel><TextBlock Text="Downloads" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}"/><TextBlock Text="Keep track of your installs." Foreground="{DynamicResource DeckMuted}" FontSize="12" Margin="0,6,0,0"/></StackPanel>
+          <Grid Grid.Column="1" VerticalAlignment="Center">
+            <ui:Button x:Name="DownloadOptionsButton" Icon="{ui:SymbolIcon MoreHorizontal24}" Click="DownloadOptions_Click" Style="{StaticResource DeckButton}" Width="36" Height="36" Padding="5" AutomationProperties.Name="Download options" ToolTip="Download options · F10"/>
+            <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource DeckBlue}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-2,0" IsHitTestVisible="False" Visibility="{Binding HasActiveFilters, Converter={StaticResource BoolVis}}"/>
+          </Grid>
+        </Grid>
+        <Border x:Name="DownloadHero" DataContext="{Binding HeroJob}" Height="214" CornerRadius="12" Padding="18" BorderBrush="{DynamicResource DeckLine}" BorderThickness="1" Background="{DynamicResource DeckHeroBackground}" Visibility="{Binding DataContext.HasHeroJob, RelativeSource={RelativeSource AncestorType=Page}, Converter={StaticResource BoolVis}}">
+          <Grid x:Name="DownloadHeroLayout">
+            <Grid.ColumnDefinitions><ColumnDefinition x:Name="DownloadArtworkColumn" Width="152"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Border x:Name="DownloadHeroAmbient" Grid.ColumnSpan="3" Grid.RowSpan="3" Visibility="Collapsed" Opacity="0"/>
+            <Grid x:Name="DownloadArtworkPane" Grid.RowSpan="2" Margin="0,0,18,0" Height="88" VerticalAlignment="Top" controls:RoundedClip.Radius="8">
+              <Grid><Border Background="{Binding CoverColor}"><TextBlock Text="{Binding CoverGlyph}" FontSize="30" Foreground="#80FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><Border x:Name="DownloadHeroArtwork"><Image controls:AsyncArtwork.Width="500" controls:AsyncArtwork.Url="{Binding HeaderArtUrl}" Stretch="UniformToFill" /></Border></Grid>
+            </Grid>
+            <Grid x:Name="DownloadHeroContent" Grid.Column="1" Grid.ColumnSpan="2" Grid.RowSpan="2">
+              <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+              <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,12,0"><TextBlock x:Name="DownloadHeroTitle" Text="{Binding GameName}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding GameName}"/>
+                  <StackPanel Orientation="Horizontal" Margin="0,7,0,0"><Ellipse Width="6" Height="6" Fill="{DynamicResource DeckBlue}" VerticalAlignment="Center" Margin="0,0,7,0"/><TextBlock x:Name="DownloadPhaseLabel" Text="{Binding PhaseLabel}" Foreground="{DynamicResource DeckSecondary}" FontSize="12"/></StackPanel>
+                </StackPanel>
+                <StackPanel x:Name="DownloadHeroActions" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                  <ui:Button Icon="{ui:SymbolIcon Pause24}" Style="{StaticResource DeckPause}" Command="{Binding DataContext.PauseCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Width="36" Height="36" MinHeight="36" Padding="7" AutomationProperties.Name="Pause download" ToolTip="Pause download"/>
+                  <ui:Button Icon="{ui:SymbolIcon Play24}" Style="{StaticResource DeckContinue}" Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Width="36" Height="36" MinHeight="36" Padding="7" AutomationProperties.Name="Resume download" ToolTip="Resume download"/>
+                  <ui:Button Icon="{ui:SymbolIcon Dismiss20}" Style="{StaticResource DeckCancel}" Command="{Binding DataContext.CancelCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Width="36" Height="36" MinHeight="36" Padding="7" Margin="8,0,0,0" AutomationProperties.Name="Cancel download" ToolTip="Cancel download"/>
+                </StackPanel>
+              </Grid>
+              <StackPanel x:Name="DownloadHeroProgressRow" Grid.Row="1" VerticalAlignment="Bottom" Margin="0,12,0,0">
+                <controls:SmoothProgressBar x:Name="FocusedProgress" SmoothValue="{Binding DeckProgress}" IsIndeterminate="{Binding DeckProgressIndeterminate}" Maximum="100" Height="5" Style="{StaticResource ReferenceDownloadProgress}" Foreground="{DynamicResource DeckBlue}" Background="{DynamicResource DeckLine}"/>
+                <TextBlock x:Name="DownloadTransferPercentage" Text="{Binding DeckProgressCaption}" HorizontalAlignment="Right" Foreground="{DynamicResource DeckSecondary}" FontSize="11" Margin="0,6,0,0"/>
+              </StackPanel>
+            </Grid>
+            <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource DeckLine}" BorderThickness="0,1,0,0" Padding="0,14,0,0" Margin="0,16,0,0">
+              <Grid x:Name="DownloadTransferMetrics"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <StackPanel><TextBlock Text="Download speed" FontSize="10" Foreground="{DynamicResource DeckMuted}"/><TextBlock x:Name="DownloadNetworkRate" Text="{Binding DeckNetworkRate}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0"><TextBlock Text="Downloaded" FontSize="10" Foreground="{DynamicResource DeckMuted}"/><TextBlock x:Name="DownloadTransferSummary" Text="{Binding DeckTransferSummary}" FontSize="13" Foreground="{DynamicResource DeckText}" Margin="0,7,0,0" TextTrimming="CharacterEllipsis"/></StackPanel>
+                <StackPanel Grid.Column="2" Margin="14,0,0,0"><TextBlock Text="Time remaining" FontSize="10" Foreground="{DynamicResource DeckMuted}"/><TextBlock x:Name="DownloadRemaining" Text="{Binding DeckRemaining}" FontSize="13" Foreground="{DynamicResource DeckText}" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding DeckRemaining}"/></StackPanel>
+                <TextBlock x:Name="DownloadDiskRate" Text="{Binding DiskSpeed}" Visibility="Collapsed"/>
+              </Grid>
+            </Border>
+            <Border x:Name="DownloadHeroDetailRow" Visibility="Collapsed"/>
+          </Grid>
+        </Border>
+      </StackPanel>
+      <Grid Grid.Row="1" Margin="0,28,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <TextBlock Text="{Binding DeckQueueHeading}" Foreground="{DynamicResource DeckText}" FontSize="15" FontWeight="SemiBold"/>
+          <TextBlock x:Name="DeckAutomation" Grid.Column="1" Text="{Binding DeckAutomationLabel}" Foreground="{DynamicResource DeckMuted}" FontSize="11" VerticalAlignment="Center"/>
+        </Grid>
+        <ListBox x:Name="DownloadQueue" Grid.Row="1" ItemsSource="{Binding Source={StaticResource DeckQueueView}}" SelectedItem="{Binding SelectedJob, Mode=OneWayToSource}" ItemTemplate="{StaticResource JobRowTemplate}" Background="Transparent" BorderThickness="0"
+          ScrollViewer.CanContentScroll="True" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel"
+          RequestBringIntoView="JobList_RequestBringIntoView" AutomationProperties.Name="Downloads">
+          <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+          <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="History" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}" Margin="0,16,0,12"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Name}" Value="History"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></DataTemplate></GroupStyle.HeaderTemplate><GroupStyle.Panel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></GroupStyle.Panel></GroupStyle></ListBox.GroupStyle>
+          <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,0,8"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Selection" BorderThickness="1" CornerRadius="10" BorderBrush="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Selection" Property="BorderBrush" Value="{DynamicResource DeckBlue}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+        </ListBox>
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="340" Margin="20"><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding QueueJobs.Count}" Value="0"/><Condition Binding="{Binding HasActiveFilters}" Value="False"/></MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible"/></MultiDataTrigger></Style.Triggers></Style></StackPanel.Style>
+          <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="26" Foreground="{DynamicResource DeckMuted}" HorizontalAlignment="Center" Margin="0,0,0,14"/>
+          <TextBlock Text="Nothing waiting in the queue" FontSize="15" Foreground="{DynamicResource DeckSecondary}" TextAlignment="Center"/>
+          <TextBlock Text="Pick your next game from the library." FontSize="12" Foreground="{DynamicResource DeckMuted}" TextAlignment="Center" Margin="0,7,0,14"/>
+          <ui:Button Content="Browse games" Command="{Binding NavigateLibraryCommand}" Style="{StaticResource DeckButton}" HorizontalAlignment="Center" Padding="14,8"/>
+        </StackPanel>
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" ><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding ShowEmptyResults}" Value="True"/><Condition Binding="{Binding HasActiveFilters}" Value="True"/></MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible"/></MultiDataTrigger></Style.Triggers></Style></StackPanel.Style><TextBlock Text="{Binding EmptyStateMessage}" Foreground="{DynamicResource DeckSecondary}"/><ui:Button Content="Reset filters" Style="{StaticResource DeckButton}" Command="{Binding ClearFiltersCommand}" Margin="0,12,0,0"/></StackPanel>
+      </Grid>
+      <Border Grid.Row="2" x:Name="DeckFooter" Visibility="Collapsed"/>
+    <Grid x:Name="DownloadOptionsLayer" Grid.RowSpan="3" Visibility="Collapsed" Panel.ZIndex="4" KeyboardNavigation.TabNavigation="Cycle">
+      <Border Background="{DynamicResource DownloadOptionsScrimBrush}" MouseLeftButtonDown="DownloadOptionsDismiss_Click"/>
+      <Border x:Name="DownloadOptionsPanel" Width="480" MaxHeight="600" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,52,24,24" Background="{DynamicResource SolidSurfaceBrush}" CornerRadius="16" BorderBrush="{DynamicResource DeckLine}" BorderThickness="1" Padding="20">
+        <Border.Effect>
+          <DropShadowEffect BlurRadius="32" ShadowDepth="6" Direction="270" Color="#000000" Opacity="0.22"/>
+        </Border.Effect>
+        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel>
+          <DockPanel Margin="0,0,0,16">
+            <ui:Button x:Name="DownloadOptionsClose" Content="✕" DockPanel.Dock="Right" Style="{StaticResource DeckButton}" Click="DownloadOptions_Click" Width="32" Height="32" Padding="0" ToolTip="Schließen (Esc)"/>
+            <StackPanel>
+              <TextBlock Text="Download-Optionen" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}"/>
+              <TextBlock Text="Filter, Warteschlange und Diagnose" FontSize="11.5" Foreground="{DynamicResource DeckMuted}" Margin="0,2,0,0"/>
+            </StackPanel>
+          </DockPanel>
+          <TextBlock Text="FILTER &amp; SUCHE" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource DeckMuted}" Margin="0,0,0,6"/>
+          <StackPanel x:Name="DownloadFilters">
+            <ui:TextBox x:Name="DownloadSearch" PlaceholderText="Downloads oder App-ID durchsuchen …" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}" AutomationProperties.Name="Search downloads" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" MinHeight="36"/>
+            <Grid Margin="0,8,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="Status" Foreground="{DynamicResource DeckSecondary}" FontSize="12" VerticalAlignment="Center"/>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Filters}" SelectedItem="{Binding SelectedFilter}" HorizontalAlignment="Stretch" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" AutomationProperties.Name="Filter download status"/>
+            </Grid>
+            <Grid Margin="0,8,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="Quelle" Foreground="{DynamicResource DeckSecondary}" FontSize="12" VerticalAlignment="Center"/>
+              <ComboBox Grid.Column="1" ItemsSource="{Binding SourceFilters}" SelectedItem="{Binding SelectedSourceFilter}" HorizontalAlignment="Stretch" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" AutomationProperties.Name="Filter downloads by source"/>
+            </Grid>
+          </StackPanel>
+          <TextBlock Text="AKTIONEN" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource DeckMuted}" Margin="0,16,0,6"/>
+          <WrapPanel x:Name="DownloadHeaderActions" Margin="0,4,0,0">
+            <ui:Button Content="Start queue" Icon="{ui:SymbolIcon Play20}" Style="{StaticResource DeckButton}" Command="{Binding StartQueuedCommand}" Margin="0,0,8,8"/>
+            <ui:Button Content="Stop queue" Icon="{ui:SymbolIcon Pause20}" Style="{StaticResource DeckButton}" Command="{Binding StopQueueCommand}" Visibility="{Binding IsQueueRunning, Converter={StaticResource BoolVis}}" Margin="0,0,8,8"/>
+            <ui:Button Content="Refresh" Icon="{ui:SymbolIcon ArrowClockwise20}" Style="{StaticResource DeckButton}" Command="{Binding RefreshCommand}" Margin="0,0,8,8"/>
+            <ui:Button Content="Games" Icon="{ui:SymbolIcon Games20}" Style="{StaticResource DeckButton}" Command="{Binding NavigateLibraryCommand}" Margin="0,0,8,8"/>
+            <ui:Button Content="DepotDownloader" Icon="{ui:SymbolIcon Box20}" Style="{StaticResource DeckButton}" Command="{Binding NavigateDepotDownloaderCommand}" Margin="0,0,8,8"/>
+          </WrapPanel>
+          <TextBlock Text="WARTESCHLANGE &amp; STATUS" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource DeckMuted}" Margin="0,8,0,6"/>
+          <Border Background="{DynamicResource DeckButtonHover}" CornerRadius="8" Padding="12,10" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1" Margin="0,0,0,10">
+            <StackPanel>
+              <TextBlock x:Name="DownloadResultCount" Text="{Binding ResultLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource DeckText}"/>
+              <TextBlock Text="{Binding QueueStatus}" Foreground="{DynamicResource DeckSecondary}" TextWrapping="Wrap" Margin="0,4,0,0" FontSize="11.5"/>
+            </StackPanel>
+          </Border>
+          <ui:Button Content="Details" Click="DownloadDetails_Click" Style="{StaticResource DeckButton}" HorizontalAlignment="Left" Margin="0,0,0,0"/>
+                <Expander x:Name="DownloadDetails" Header="Details &amp; recovery" Margin="0,6,0,0" DataContext="{Binding SelectedJob}">
+        <Expander.Style><Style TargetType="Expander" BasedOn="{StaticResource {x:Type Expander}}">
+          <Style.Triggers><DataTrigger Binding="{Binding}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers>
+        </Style></Expander.Style>
+        <ScrollViewer MaxHeight="210" VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="14,10">
+            <TextBlock Text="{Binding GameName}" Style="{StaticResource CardHeaderStyle}" />
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,10" />
+            <WrapPanel Margin="0,0,0,8">
+              <Border Style="{StaticResource AccentPillStyle}" Margin="0,0,8,4"><TextBlock Text="{Binding DownloadMode}" Style="{StaticResource AccentPillTextStyle}" /></Border>
+              <Border Style="{StaticResource StatusPillStyle}" Margin="0,0,8,4"><TextBlock Text="{Binding DepotLabel}" Style="{StaticResource CaptionStyle}" /></Border>
+              <Border Style="{StaticResource StatusPillStyle}" Margin="0,0,8,4"><TextBlock Text="{Binding Branch, StringFormat='Branch: {0}'}" Style="{StaticResource CaptionStyle}" /></Border>
+            </WrapPanel>
+            <TextBlock Text="{Binding ElapsedDisplay, StringFormat='Active time: {0}'}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+            <TextBlock Text="{Binding ManifestId, StringFormat='Manifest: {0}'}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+            <TextBlock Text="{Binding InstallationDisplay, StringFormat='Content size (current depot): {0}'}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+            <TextBlock Text="{Binding ReusedDisplay, StringFormat='Verified existing content: {0}'}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+            <TextBlock Text="{Binding CurrentFile, StringFormat='Current file: {0}'}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentFile}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Text="{Binding TargetFolder, StringFormat='Folder: {0}'}" TextTrimming="CharacterEllipsis" ToolTip="{Binding TargetFolder}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" />
+            <WrapPanel Margin="-6,12,0,0">
+              <ui:Button Content="Verify &amp; repair" Icon="{ui:SymbolIcon ShieldCheckmark24}" Style="{StaticResource RepairButton}" Appearance="Primary"
+                         ToolTip="Run the downloader against its saved manifests; check existing files and download missing or changed data."
+                         Command="{Binding DataContext.RepairCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+              <ui:Button Content="Check local files" Icon="{ui:SymbolIcon FolderOpen24}" Style="{StaticResource CheckFilesButton}" Appearance="Secondary"
+                         ToolTip="Inspect local files without changing them. This is not a manifest or checksum verification."
+                         Command="{Binding DataContext.VerifyCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+            </WrapPanel>
+            <Expander Header="Tool output" Margin="0,8,0,0"><TextBox Text="{Binding ProcessLog, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="120" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" /></Expander>
+          </StackPanel>
+        </ScrollViewer>
+      </Expander>
+        </StackPanel></ScrollViewer>
+      </Border>
+    </Grid>
+    </Grid>
+  </Grid>
+</Page>

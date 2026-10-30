@@ -1,0 +1,1450 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using CommunityToolkit.Mvvm.Input;
+using Steamy.Models;
+using Steamy.Pages;
+using Steamy.Services;
+using Steamy.Playtime;
+
+namespace Steamy.ViewModels;
+
+public sealed record DashboardStatusItem(string Title, string Detail, bool IsOk, string ActionLabel, ICommand Action);
+
+public sealed class DashboardLibraryEntry(Game game, bool isFavorite, DateTimeOffset? openedAt) : UiObservableObject, IEquatable<DashboardLibraryEntry>
+{
+    public Game Game { get; } = game;
+    public bool IsFavorite { get; } = isFavorite;
+    public DateTimeOffset? OpenedAt { get; } = openedAt;
+    // Preserve card instances on an unchanged library refresh, including live time bindings.
+    public bool Equals(DashboardLibraryEntry? other) => other is not null && Equals(Game, other.Game) && IsFavorite == other.IsFavorite && OpenedAt == other.OpenedAt;
+    public override bool Equals(object? other) => other is DashboardLibraryEntry entry && Equals(entry);
+    public override int GetHashCode() => HashCode.Combine(Game, IsFavorite, OpenedAt);
+    private long _playedSeconds;
+    private bool _isPlaying;
+    public string PlayTimeLabel => PlayTimeFiles.Format(_playedSeconds);
+    public bool IsPlaying => _isPlaying;
+    public bool CanLaunch => !Game.IsLocalDownload || !string.IsNullOrWhiteSpace(Game.LaunchExecutable);
+    public string SourceLabel => string.IsNullOrWhiteSpace(Game.InstallationSource) ? (Game.IsLocalDownload ? "DepotDownloader" : "Steam") : Game.InstallationSource;
+    public string ActionLabel => CanLaunch ? "Play" : "Open folder";
+    public void UpdatePlayTime(GamePlayTime? time, bool fresh)
+    {
+        var seconds = Math.Max(0, time?.Seconds ?? 0);
+        var playing = fresh && time?.IsRunning == true;
+        if (_playedSeconds / 60 != seconds / 60) { _playedSeconds = seconds; OnPropertyChanged(nameof(PlayTimeLabel)); }
+        else _playedSeconds = seconds;
+        if (_isPlaying != playing) { _isPlaying = playing; OnPropertyChanged(nameof(IsPlaying)); }
+    }
+    public string FavoriteGlyph => IsFavorite ? "★" : "☆";
+    public string FavoriteActionLabel => IsFavorite ? "Remove from favorites" : "Add to favorites";
+    public string OpenedLabel => OpenedAt is { } opened ? $"Opened in Steamy · {opened.LocalDateTime:g}" : Game.Size;
+}
+
+public sealed record DashboardSearchMatch(SteamCatalogItem Item, Game Game)
+{
+    public string Detail => Item.IsInstalled ? $"Installed · {Item.AppLabel}" : Item.AppLabel;
+}
+
+public sealed class DashboardFeature(SpotlightGame metadata) : UiObservableObject
+{
+    private readonly SpotlightGame _dateOnly = metadata with { ReleaseTime = null };
+    public string ReleaseBadge => ReleaseCountdown.Label(_dateOnly, DateTimeOffset.Now);
+    private WeakReference<ImageSource>? _heroArtwork;
+    private WeakReference<ImageSource>? _logoArtwork;
+    public ImageSource? LogoArtwork
+    {
+        get => _logoArtwork?.TryGetTarget(out var image) == true ? image : null;
+        set { if (ReferenceEquals(LogoArtwork, value)) return; _logoArtwork = value is null ? null : new(value); OnPropertyChanged(); OnPropertyChanged(nameof(HasLogo)); OnPropertyChanged(nameof(Eyebrow)); }
+    }
+    public bool HasLogo => LogoArtwork is not null;
+    public string FeatureActionLabel => Metadata.ComingSoon ? "Release details" : "View game";
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+    public SpotlightGame Metadata { get; } = metadata;
+    public Game Game { get; } = new()
+    {
+        AppId = metadata.AppId, Name = metadata.Name, CoverColor = "#283E53", InstallState = GameInstallState.NotInstalled
+    };
+    public string Description => Metadata.Description;
+    public string HeroTitle => Metadata.AppId switch
+    {
+        3751950 => "Black Flag\nResynced",
+        4435490 => "Modern\nWarfare 4",
+        4354570 => "Final Fantasy VII\nRevelation",
+        _ => Metadata.Name.Replace("®", "", StringComparison.Ordinal).Replace("™", "", StringComparison.Ordinal)
+    };
+    public string Eyebrow => HasLogo ? (Metadata.ComingSoon ? "Coming soon" : "Featured game") : Metadata.AppId switch
+    {
+        3751950 => "Assassin’s Creed", 4435490 => "Call of Duty",
+        _ => Metadata.ComingSoon ? "Coming soon" : "Featured game"
+    };
+    public string Genres => Metadata.Genres;
+    public string ReleaseLabel => Metadata.ReleaseLabel;
+    public string ReleaseStatus => Metadata.ComingSoon ? "UPCOMING" : "RELEASED";
+    public string Countdown => Metadata.ComingSoon ? ReleaseCountdown.Label(Metadata, DateTimeOffset.Now) : "Released";
+    private ReleaseCountdownParts? _countdownParts = ReleaseCountdown.Parts(metadata, DateTimeOffset.Now);
+    public bool HasTimedCountdown => _countdownParts is not null;
+    public string CountdownDays => _countdownParts?.Days.ToString("00") ?? "–";
+    public string CountdownHours => _countdownParts?.Hours.ToString("00") ?? "–";
+    public string CountdownMinutes => _countdownParts?.Minutes.ToString("00") ?? "–";
+    public string CountdownSeconds => _countdownParts?.Seconds.ToString("00") ?? "–";
+    public string CountdownDetail => Metadata.ReleaseTime is { } time
+        ? $"Steam's scheduled release: {time.ToLocalTime():MMM d, yyyy HH:mm:ss zzz}"
+        : "Steam has not published an exact release time. This date does not confirm download availability.";
+    public void RefreshCountdown()
+    {
+        _countdownParts = ReleaseCountdown.Parts(Metadata, DateTimeOffset.Now);
+        foreach (var name in new[] { nameof(Countdown), nameof(ReleaseBadge), nameof(HasTimedCountdown), nameof(CountdownDays),
+            nameof(CountdownHours), nameof(CountdownMinutes), nameof(CountdownSeconds) }) OnPropertyChanged(name);
+    }
+    public string Publisher => Metadata.Publisher;
+    public ImageSource? HeroArtwork
+    {
+        get => _heroArtwork?.TryGetTarget(out var image) == true ? image : null;
+        set { if (ReferenceEquals(HeroArtwork, value)) return; _heroArtwork = value is null ? null : new(value); OnPropertyChanged(); }
+    }
+}
+
+public sealed class DashboardViewModel : ViewModelBase
+{
+    private const int RecentGameCount = 12;
+    private const int JobPreviewCount = 2;
+    private static readonly TimeSpan RefreshDebounce = TimeSpan.FromSeconds(30);
+
+    private readonly ISteamCatalogService _catalog;
+    private Task<SteamCatalogSnapshot>? _searchCatalogTask;
+    private SteamCatalogSnapshot? _searchIndexedSnapshot;
+    private Task<GameSearchIndex<SteamCatalogItem>>? _searchIndexTask;
+    private readonly Dictionary<int, DashboardSearchMatch> _searchMatches = new();
+    private readonly Dictionary<int, Task> _searchArtworkLoads = new();
+    private readonly SemaphoreSlim _searchArtworkGate = new(2, 2);
+    private CancellationTokenSource? _searchCancellation;
+    private string _searchText = string.Empty;
+    private string _searchStatus = string.Empty;
+    private bool _isSearchBusy;
+    public RangeObservableCollection<SteamCatalogItem> SearchResults { get; } = new();
+    public RangeObservableCollection<DashboardSearchMatch> SearchMatches { get; } = new();
+    private bool _isSearchFocused;
+    public bool IsSearchFocused
+    {
+        get => _isSearchFocused;
+        set { if (SetProperty(ref _isSearchFocused, value)) OnPropertyChanged(nameof(ShowSearchPanel)); }
+    }
+    public bool DashboardSearchEnabled => _settings.Load().DashboardSearch;
+    public void RefreshSearchPreference()
+    {
+        OnPropertyChanged(nameof(DashboardSearchEnabled));
+        if (!DashboardSearchEnabled)
+        {
+            SearchText = string.Empty;
+            StopSearch();
+            SearchResults.ReplaceWith(Array.Empty<SteamCatalogItem>());
+            SearchMatches.ReplaceWith(Array.Empty<DashboardSearchMatch>());
+            SearchStatus = string.Empty;
+            IsSearchFocused = false;
+        }
+        OnPropertyChanged(nameof(ShowSearchPanel));
+    }
+    public bool ShowSearchPanel => DashboardSearchEnabled && HasSearchQuery;
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (!SetProperty(ref _searchText, value)) return;
+            OnPropertyChanged(nameof(HasSearchQuery));
+            OnPropertyChanged(nameof(ShowSearchPanel));
+            _searchCancellation?.Cancel();
+            _searchCancellation?.Dispose();
+            _searchCancellation = new CancellationTokenSource();
+            if (DashboardSearchEnabled) _ = SearchAsync(value.Trim(), _searchCancellation.Token);
+        }
+    }
+    public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchText);
+    public string SearchStatus { get => _searchStatus; private set => SetProperty(ref _searchStatus, value); }
+    public bool IsSearchBusy { get => _isSearchBusy; private set => SetProperty(ref _isSearchBusy, value); }
+    public ICommand OpenSearchResultCommand { get; }
+    public ICommand OpenSearchCommand { get; }
+    public void StopSearch() { _searchCancellation?.Cancel(); IsSearchBusy = false; }
+    public void ResumeSearch()
+    {
+        if (!DashboardSearchEnabled || !HasSearchQuery || _searchCancellation is { IsCancellationRequested: false }) return;
+        _searchCancellation?.Dispose();
+        _searchCancellation = new CancellationTokenSource();
+        _ = SearchAsync(SearchText.Trim(), _searchCancellation.Token);
+    }
+
+    private async Task SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        if (query.Length < 2)
+        {
+            SearchResults.ReplaceWith(Array.Empty<SteamCatalogItem>());
+            SearchMatches.ReplaceWith(Array.Empty<DashboardSearchMatch>());
+            IsSearchBusy = false;
+            SearchStatus = query.Length == 0 ? string.Empty : "Type at least two characters.";
+            return;
+        }
+        IsSearchBusy = true;
+        SearchStatus = "Searching…";
+        try
+        {
+            await Task.Delay(180, cancellationToken);
+            // One shared cached catalog request; typing never reloads optional provider indexes.
+            _searchCatalogTask ??= Task.Run(() => _catalog.GetCatalogAsync());
+            var snapshot = await _searchCatalogTask.WaitAsync(cancellationToken);
+            if (!ReferenceEquals(_searchIndexedSnapshot, snapshot))
+            {
+                _searchIndexedSnapshot = snapshot;
+                _searchIndexTask = Task.Run(() => new GameSearchIndex<SteamCatalogItem>(snapshot.Items, item => item.AppId, item => item.Name));
+            }
+            var index = await _searchIndexTask!.WaitAsync(cancellationToken);
+            var local = Store.Games.Select(game => new SteamCatalogItem
+            {
+                AppId = game.AppId, Name = game.Name,
+                IsInstalled = game.InstallState == GameInstallState.Installed
+            }).ToArray();
+            var matches = await Task.Run(() =>
+            {
+                var catalogMatches = index.Find(query, cancellationToken, item => !item.Nsfw);
+                var localMatches = new GameSearchIndex<SteamCatalogItem>(local, item => item.AppId, item => item.Name).Find(query, cancellationToken);
+                var useExact = (localMatches.Items.Count > 0 && !localMatches.IsTypoMatch)
+                    || (catalogMatches.Items.Count > 0 && !catalogMatches.IsTypoMatch);
+                var candidates = (useExact && localMatches.IsTypoMatch ? Array.Empty<SteamCatalogItem>() : localMatches.Items)
+                    .Concat(useExact && catalogMatches.IsTypoMatch ? Array.Empty<SteamCatalogItem>() : catalogMatches.Items);
+                var items = candidates.DistinctBy(item => item.AppId)
+                    .OrderByDescending(item => item.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture) == query)
+                    .ThenByDescending(item => item.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+                    .ThenByDescending(item => item.IsInstalled)
+                    .ThenByDescending(item => PopularityLookup.GetScore(item.AppId))
+                    .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).Take(6).ToArray();
+                return new GameSearchResult<SteamCatalogItem>(items, !useExact && items.Length > 0);
+            }, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            SearchResults.ReplaceWith(matches.Items);
+            var visible = matches.Items.Select(CreateSearchMatch).ToArray();
+            SearchMatches.ReplaceWith(visible);
+            _ = LoadSearchArtworkAsync(visible, cancellationToken);
+            SearchStatus = matches.Items.Count == 0 ? "No matches. Press Enter to search the full library."
+                : matches.IsTypoMatch ? "Closest matches — select a game to open it." : "Select a game, or press Enter for all results.";
+            if (!snapshot.Succeeded) _searchCatalogTask = null;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            _searchCatalogTask = null;
+            SearchStatus = "Catalog unavailable. Press Enter to search Games.";
+            Logging.Add(LogLevel.Debug, "Search", exception.GetType().Name);
+        }
+        finally { if (!cancellationToken.IsCancellationRequested) IsSearchBusy = false; }
+    }
+
+    private DashboardSearchMatch CreateSearchMatch(SteamCatalogItem item)
+    {
+        if (!_searchMatches.TryGetValue(item.AppId, out var match) || match.Item.Name != item.Name || match.Item.IsInstalled != item.IsInstalled)
+        {
+            // Bound decoded artwork retained by the suggestion cache, even across many searches.
+            if (_searchMatches.Count >= 32)
+            {
+                var key = _searchMatches.Keys.First();
+                _searchMatches.Remove(key);
+                _searchArtworkLoads.Remove(key);
+            }
+            var installed = Store.Games.FirstOrDefault(game => game.AppId == item.AppId);
+            match = new DashboardSearchMatch(item, installed ?? new Game
+            {
+                AppId = item.AppId, Name = item.Name, InstallState = GameInstallState.NotInstalled
+            });
+            _searchMatches[item.AppId] = match;
+        }
+        return match;
+    }
+
+    private async Task LoadSearchArtworkAsync(IReadOnlyList<DashboardSearchMatch> matches, CancellationToken cancellationToken)
+    {
+        foreach (var match in matches)
+        {
+            if (_searchArtworkLoads.TryGetValue(match.Item.AppId, out var existing) && existing.IsCanceled) _searchArtworkLoads.Remove(match.Item.AppId);
+            if (match.Game.HeaderImage is not null || _searchArtworkLoads.ContainsKey(match.Item.AppId)) continue;
+            _searchArtworkLoads[match.Item.AppId] = LoadSearchHeaderAsync(match.Game, cancellationToken);
+        }
+        try { await Task.WhenAll(matches.Where(match => _searchArtworkLoads.ContainsKey(match.Item.AppId)).Select(match => _searchArtworkLoads[match.Item.AppId])); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Search", $"Optional covers unavailable: {exception.GetType().Name}."); }
+    }
+
+    private async Task LoadSearchHeaderAsync(Game game, CancellationToken cancellationToken)
+    {
+        await _searchArtworkGate.WaitAsync(cancellationToken);
+        try { await Task.Run(() => _artwork.LoadHeadersAsync(new[] { game }, cancellationToken), cancellationToken); }
+        finally { _searchArtworkGate.Release(); }
+    }
+
+    private void OpenSearch(string query)
+    {
+        query = query.Trim();
+        if (query.Length == 0) return;
+        var library = App.Services.GetRequiredService<LibraryViewModel>();
+        library.SelectedSourceFilter = "All sources";
+        library.SelectedTypeFilter = "All games";
+        library.SearchText = query;
+        SearchText = string.Empty;
+        IsSearchFocused = false;
+        Navigation.Navigate<LibraryPage>();
+    }
+
+    private readonly IArtworkService _artwork;
+    private readonly ISpotlightService _spotlight;
+    private Task? _discoveryArtworkTask;
+    private CancellationTokenSource _discoveryArtworkLifetime = new();
+    private bool _discoveryArtworkStopped;
+    private readonly Dictionary<SpotlightGame, Task<BitmapImage?>> _heroLoads = new();
+    private readonly Dictionary<SpotlightGame, Task<BitmapImage?>> _logoLoads = new();
+    private async Task LoadLogoAsync(DashboardFeature feature)
+    {
+        if (_discoveryArtworkStopped || feature.LogoArtwork is not null) return;
+        var token = _discoveryArtworkLifetime.Token;
+        try
+        {
+            if (!_logoLoads.TryGetValue(feature.Metadata, out var task) || task.IsCompletedSuccessfully && task.Result is null)
+                _logoLoads[feature.Metadata] = task = Task.Run(() => _artwork.LoadSpotlightLogoAsync(feature.Metadata, token), token);
+            await PublishDiscoveryImageAsync(feature, task, image => feature.LogoArtwork = image, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Spotlight", $"Logo unavailable: {exception.GetType().Name}."); }
+        finally { ReleaseCompletedImageTasks(); }
+    }
+    private readonly Dictionary<SpotlightGame, Task<BitmapImage?>> _headerLoads = new();
+    private int _featuredIndex;
+    public IReadOnlyList<DashboardFeature> DiscoverGames { get; private set; } = Array.Empty<DashboardFeature>();
+    public IReadOnlyList<DashboardFeature> SpotlightPreviews => DiscoverGames.Take(8).ToArray();
+    public IReadOnlyList<DashboardFeature> NewGames => DiscoverGames.Where(feature => feature.Metadata.ComingSoon).ToArray();
+    private DashboardFeature? _selectedDiscovery;
+    public DashboardFeature? SelectedDiscovery { get => _selectedDiscovery; private set { if (SetProperty(ref _selectedDiscovery, value)) OnPropertyChanged(nameof(HasSelectedDiscovery)); } }
+    public bool HasSelectedDiscovery => SelectedDiscovery is not null;
+    public ICommand CloseDiscoveryCommand => new RelayCommand(() => SelectedDiscovery = null);
+    public ICommand OpenDiscoveryStoreCommand => new RelayCommand(() =>
+    {
+        if (SelectedDiscovery is { } feature) StartShell(feature.Metadata.StoreUrl);
+    });
+    public ICommand BrowseDiscoverySourcesCommand => new RelayCommand(() => OpenSpotlight(SelectedDiscovery));
+    public bool HasSpotlight => DiscoverGames.Count > 0;
+    public DashboardFeature? FeaturedGame => HasSpotlight ? DiscoverGames[_featuredIndex] : null;
+    public string FeaturedPosition => HasSpotlight ? $"{_featuredIndex + 1:00} / {DiscoverGames.Count:00}" : string.Empty;
+    public string FeaturedDownloadLabel => FeaturedGame?.Metadata.ComingSoon == true ? "Check sources" : "Download";
+    private bool _spotlightPaused;
+    public bool SpotlightPaused { get => _spotlightPaused; private set { if (SetProperty(ref _spotlightPaused, value)) OnPropertyChanged(nameof(SpotlightPlaybackLabel)); } }
+    public string SpotlightPlaybackLabel => SpotlightPaused ? "Resume" : "Pause";
+    public ICommand ToggleSpotlightCommand => new RelayCommand(() => SpotlightPaused = !SpotlightPaused);
+    public void RefreshCountdowns()
+    {
+        var previous = DiscoverGames;
+        ApplySpotlight(_spotlight.Cached);
+        if (!ReferenceEquals(previous, DiscoverGames)) _ = LoadVisibleArtworkAsync();
+        foreach (var feature in DiscoverGames) feature.RefreshCountdown();
+        SelectedDiscovery?.RefreshCountdown();
+    }
+    public ICommand SelectFeaturedCommand => new RelayCommand<DashboardFeature>(feature =>
+    {
+        var index = Array.IndexOf(DiscoverGames.ToArray(), feature);
+        if (index >= 0) MoveFeatured(index - _featuredIndex);
+    });
+    public ICommand NextFeaturedCommand { get; }
+    public ICommand PreviousFeaturedCommand { get; }
+    public ICommand ViewFeaturedCommand { get; }
+    public ICommand DownloadFeaturedCommand { get; }
+    public ICommand OpenSpotlightCommand { get; }
+
+    private void ReleaseCompletedImageTasks()
+    {
+        foreach (var cache in new[] { _heroLoads, _headerLoads, _logoLoads })
+            foreach (var key in cache.Where(pair => pair.Value.IsCompleted).Select(pair => pair.Key).ToArray()) cache.Remove(key);
+    }
+    public Task EnsureDiscoveryArtworkAsync(bool force = false) => _discoveryArtworkStopped ? Task.CompletedTask
+        : _discoveryArtworkTask is { IsCompleted: false } ? _discoveryArtworkTask : _discoveryArtworkTask = LoadDiscoveryArtworkAsync(force);
+
+    private void StopDiscoveryArtwork()
+    {
+        if (_discoveryArtworkStopped) return;
+        _discoveryArtworkStopped = true;
+        _discoveryArtworkLifetime.Cancel(); _discoveryArtworkLifetime.Dispose();
+        _heroLoads.Clear(); _headerLoads.Clear(); _logoLoads.Clear();
+        _discoveryArtworkTask = null;
+    }
+
+    private void ResumeDiscoveryArtwork()
+    {
+        if (!_discoveryArtworkStopped) return;
+        _discoveryArtworkLifetime = new(); _discoveryArtworkStopped = false;
+    }
+
+    private static async Task<T> WaitForDiscoveryWorkAsync<T>(Task<T> work, CancellationToken token)
+    {
+        // A provider may ignore cancellation and fail after the page has left.
+        // Release the consumer now while keeping that eventual failure observed.
+        _ = work.ContinueWith(static completed => { _ = completed.Exception; }, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return await work.WaitAsync(token).ConfigureAwait(false);
+    }
+
+    private async Task PublishDiscoveryImageAsync(DashboardFeature feature, Task<BitmapImage?> work,
+        Action<BitmapImage> publish, CancellationToken token)
+    {
+        var image = await WaitForDiscoveryWorkAsync(work, token);
+        token.ThrowIfCancellationRequested();
+        if (image is not null && DiscoverGames.Contains(feature)) publish(image);
+    }
+
+    private async Task LoadDiscoveryArtworkAsync(bool force)
+    {
+        var token = _discoveryArtworkLifetime.Token;
+        // Retry optional failures on an explicit refresh, without refetching successful images.
+        if (force)
+        {
+            foreach (var key in _heroLoads.Where(pair => pair.Value.IsCompleted &&
+                (!pair.Value.IsCompletedSuccessfully || pair.Value.Result is null)).Select(pair => pair.Key).ToArray()) _heroLoads.Remove(key);
+            foreach (var key in _headerLoads.Where(pair => pair.Value.IsCompleted &&
+                (!pair.Value.IsCompletedSuccessfully || pair.Value.Result is null)).Select(pair => pair.Key).ToArray()) _headerLoads.Remove(key);
+        }
+        // Show cached artwork immediately; checking the feed must not delay the first paint.
+        var savedArtwork = LoadVisibleArtworkAsync();
+        try
+        {
+            var snapshot = await WaitForDiscoveryWorkAsync(_spotlight.GetAsync(force, token), token);
+            token.ThrowIfCancellationRequested(); ApplySpotlight(snapshot);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Spotlight", $"Using saved discoveries: {exception.GetType().Name}."); }
+        if (token.IsCancellationRequested) return;
+        await LoadVisibleArtworkAsync();
+        await savedArtwork;
+        ReleaseCompletedImageTasks();
+    }
+
+    private Task LoadVisibleArtworkAsync() => LoadFeaturedArtworkAsync();
+
+    private void ApplySpotlight(SpotlightSnapshot snapshot)
+    {
+        var now = DateTimeOffset.Now;
+        var upcoming = ReleaseCountdown.UpcomingAt(snapshot.Games, now);
+        var recentHighlights = snapshot.Games.Where(game => game.Featured && !game.ComingSoon
+            && game.ReleaseDate is { } released && released >= DateOnly.FromDateTime(now.DateTime).AddMonths(-6));
+        var discoveries = recentHighlights.Concat(upcoming).ToArray();
+        if (DiscoverGames.Select(feature => feature.Metadata).SequenceEqual(discoveries)) return;
+        var previousId = FeaturedGame?.Game.AppId;
+        DiscoverGames = discoveries.Select(game => new DashboardFeature(game)).ToArray();
+        _featuredIndex = Math.Max(0, Array.FindIndex(DiscoverGames.ToArray(), feature => feature.Game.AppId == previousId));
+        _heroLoads.Clear();
+        _logoLoads.Clear();
+        _headerLoads.Clear();
+        OnPropertyChanged(nameof(DiscoverGames));
+        OnPropertyChanged(nameof(NewGames));
+        OnPropertyChanged(nameof(SpotlightPreviews));
+        UpdateSpotlightSelection();
+        OnPropertyChanged(nameof(HasSpotlight));
+        OnPropertyChanged(nameof(FeaturedGame));
+        OnPropertyChanged(nameof(FeaturedPosition));
+        OnPropertyChanged(nameof(FeaturedDownloadLabel));
+        (NextFeaturedCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (PreviousFeaturedCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (ViewFeaturedCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (DownloadFeaturedCommand as RelayCommand)?.NotifyCanExecuteChanged();
+    }
+
+    private async Task LoadFeaturedArtworkAsync()
+    {
+        if (_discoveryArtworkStopped) return;
+        var feature = FeaturedGame;
+        if (feature is null) return;
+        if (feature.HeroArtwork is not null) { _ = LoadLogoAsync(feature); _ = WarmNextSpotlightArtworkAsync(); return; }
+        var token = _discoveryArtworkLifetime.Token;
+        _ = LoadLogoAsync(feature);
+        try
+        {
+            if (!_heroLoads.TryGetValue(feature.Metadata, out var task))
+                _heroLoads[feature.Metadata] = task = Task.Run(() => _artwork.LoadSpotlightHeroAsync(feature.Metadata, token), token);
+            await PublishDiscoveryImageAsync(feature, task, image => feature.HeroArtwork = image, token);
+            if (ReferenceEquals(feature, FeaturedGame)) _ = WarmNextSpotlightArtworkAsync();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            Logging.Add(LogLevel.Debug, "Dashboard", $"Optional artwork unavailable: {exception.GetType().Name}.");
+        }
+        finally { ReleaseCompletedImageTasks(); }
+    }
+
+    private async Task WarmNextSpotlightArtworkAsync()
+    {
+        if (_discoveryArtworkStopped || DiscoverGames.Count < 2) return;
+        var token = _discoveryArtworkLifetime.Token;
+        var next = DiscoverGames[(_featuredIndex + 1) % DiscoverGames.Count];
+        if (next.HeroArtwork is not null && next.Game.HeaderImage is not null) return;
+        try
+        {
+            Task<BitmapImage?>? hero = null;
+            Task<BitmapImage?>? header = null;
+            if (next.HeroArtwork is null && !_heroLoads.TryGetValue(next.Metadata, out hero))
+                _heroLoads[next.Metadata] = hero = Task.Run(() => _artwork.LoadSpotlightHeroAsync(next.Metadata, token), token);
+            else if (next.HeroArtwork is null)
+                _heroLoads.TryGetValue(next.Metadata, out hero);
+
+            if (next.Game.HeaderImage is null && !_headerLoads.TryGetValue(next.Metadata, out header))
+                _headerLoads[next.Metadata] = header = Task.Run(() => _artwork.LoadSpotlightHeaderAsync(next.Metadata, token), token);
+            else if (next.Game.HeaderImage is null)
+                _headerLoads.TryGetValue(next.Metadata, out header);
+
+            _ = LoadLogoAsync(next);
+            var tasks = new List<Task>();
+            if (hero is not null) tasks.Add(PublishDiscoveryImageAsync(next, hero, image => next.HeroArtwork = image, token));
+            if (header is not null) tasks.Add(PublishDiscoveryImageAsync(next, header, image => next.Game.HeaderImage = image, token));
+            if (tasks.Count > 0) await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Spotlight", $"Optional next image unavailable: {exception.GetType().Name}."); }
+        finally { ReleaseCompletedImageTasks(); }
+    }
+
+    private void UpdateSpotlightSelection()
+    {
+        foreach (var feature in DiscoverGames) feature.IsSelected = ReferenceEquals(feature, FeaturedGame);
+    }
+
+    private void MoveFeatured(int direction)
+    {
+        if (!HasSpotlight) return;
+        _featuredIndex = (_featuredIndex + direction + DiscoverGames.Count) % DiscoverGames.Count;
+        UpdateSpotlightSelection();
+        OnPropertyChanged(nameof(FeaturedGame));
+        OnPropertyChanged(nameof(FeaturedPosition));
+        OnPropertyChanged(nameof(FeaturedDownloadLabel));
+        _ = LoadFeaturedArtworkAsync();
+    }
+
+    private void ViewFeatured()
+    {
+        if (FeaturedGame is null) return;
+        var library = App.Services.GetRequiredService<LibraryViewModel>();
+        library.SelectedSourceFilter = "All sources";
+        library.SelectedTypeFilter = "All games";
+        library.SearchText = FeaturedGame.Game.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Navigation.Navigate<LibraryPage>();
+    }
+
+    private void DownloadFeatured() => OpenSpotlight(FeaturedGame);
+
+    private void OpenSpotlight(DashboardFeature? featured)
+    {
+        featured ??= FeaturedGame;
+        if (featured is null) return;
+        SelectedDiscovery = null;
+        var library = App.Services.GetRequiredService<LibraryViewModel>();
+        library.SelectedSourceFilter = "All sources";
+        library.RequestedDownload = new SteamCatalogItem
+        {
+            AppId = featured.Game.AppId, Name = featured.Game.Name,
+            AppType = SteamCatalogAppType.Game, HeaderImage = featured.Game.HeaderImage,
+            ArtworkImage = featured.Game.ArtworkImage
+        };
+        Navigation.Navigate<LibraryPage>();
+    }
+
+
+    private readonly ILibrarySyncService _librarySync;
+    private readonly ISettingsService _settings;
+    private readonly IGameActivityService _activity;
+    private readonly IPlayTimeService? _playTime;
+    private PlayTimeSnapshot _playTimeSnapshot = PlayTimeSnapshot.Empty;
+    private bool _readingPlayTime;
+    private readonly DispatcherTimer _playTimeTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(15) };
+    private GameActivitySnapshot _activitySnapshot = GameActivitySnapshot.Empty;
+    private readonly Dictionary<int, Game> _catalogFavorites = new();
+    private readonly HashSet<int> _resolvedFavoriteAppIds = new();
+    private readonly HashSet<Game> _personalArtworkRequested = new();
+    private Task? _favoriteDetailsTask;
+    private CancellationTokenSource? _personalArtworkCancellation;
+    private readonly IDepotDownloaderCheckService _depotCheck;
+    private readonly HashSet<DownloadJob> _watchedJobs = new();
+
+    private SteamLibraryScanResult? _scan;
+    private DepotDownloaderToolStatus? _depotStatus;
+    private string? _depotStatusPath;
+    private DateTime _lastRefresh = DateTime.MinValue;
+    private bool _isRefreshing;
+    private bool _libraryRefreshQueued;
+    private bool _downloadRefreshQueued;
+    private readonly DispatcherTimer _statsTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
+    private bool _statsDirty;
+
+    public void StartLiveStats()
+    {
+        ResumeDiscoveryArtwork();
+        _ = EnsureDiscoveryArtworkAsync();
+        _personalArtworkCancellation?.Cancel();
+        _personalArtworkCancellation?.Dispose();
+        _personalArtworkCancellation = new CancellationTokenSource();
+        _personalArtworkRequested.Clear();
+        LoadPersonalArtwork();
+        RaiseDownloadStats();
+        _ = RefreshPlayTimeAsync();
+        _playTimeTimer.Start();
+        _statsTimer.Start();
+    }
+
+    public void StopLiveStats()
+    {
+        StopDiscoveryArtwork();
+        _statsTimer.Stop();
+        _playTimeTimer.Stop();
+        _personalArtworkCancellation?.Cancel();
+        _personalArtworkCancellation?.Dispose();
+        _personalArtworkCancellation = null;
+        _personalArtworkRequested.Clear();
+    }
+    private DownloadJob? _heroDownload;
+    private Game? _heroGame;
+    private long _storageFree = -1;
+    private long _storageTotal;
+    private string _storageDrive = string.Empty;
+    private IReadOnlyList<DashboardStatusItem> _statusItems = Array.Empty<DashboardStatusItem>();
+
+    public DashboardViewModel(
+        IAppDataStore store,
+        INavigationService navigation,
+        ILoggingService logging,
+        ILibrarySyncService librarySync,
+        ISettingsService settings,
+        IDepotDownloaderCheckService depotCheck,
+        DownloadsViewModel downloadActions,
+        IArtworkService artwork,
+        ISteamCatalogService catalog,
+        ISpotlightService spotlight,
+        IGameActivityService activity,
+        IPlayTimeService? playTime = null,
+        IDownloadedGameLibrary? downloadedLibrary = null,
+        IPcGameScanService? pcScanner = null) : base(store, navigation, logging)
+    {
+        _catalog = catalog;
+        OpenSearchResultCommand = new RelayCommand<SteamCatalogItem>(item => { if (item is not null) OpenSearch(item.AppId.ToString(System.Globalization.CultureInfo.InvariantCulture)); });
+        OpenSearchCommand = new RelayCommand(() => OpenSearch(SearchText.Trim()));
+        _artwork = artwork;
+        _spotlight = spotlight;
+        NextFeaturedCommand = new RelayCommand(() => MoveFeatured(1), () => DiscoverGames.Count > 1);
+        PreviousFeaturedCommand = new RelayCommand(() => MoveFeatured(-1), () => DiscoverGames.Count > 1);
+        ViewFeaturedCommand = new RelayCommand(ViewFeatured, () => HasSpotlight);
+        DownloadFeaturedCommand = new RelayCommand(DownloadFeatured, () => HasSpotlight);
+        OpenSpotlightCommand = new RelayCommand<DashboardFeature>(feature => SelectedDiscovery = feature ?? FeaturedGame);
+        ApplySpotlight(spotlight.Cached);
+        _librarySync = librarySync;
+        _settings = settings;
+        _activity = activity;
+        _playTime = playTime;
+        _pcScanner = pcScanner;
+        if (downloadedLibrary is not null) downloadedLibrary.Changed += (_, _) =>
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            void RefreshLocal()
+            {
+                _downloadedRefreshPending = true;
+                if (!IsRefreshing) _ = RefreshAsync(force: true);
+            }
+            if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.BeginInvoke(new Action(RefreshLocal));
+            else RefreshLocal();
+        };
+        _playTimeTimer.Tick += (_, _) => _ = RefreshPlayTimeAsync();
+        _activity.Changed += OnActivityChanged;
+        ToggleFavoriteCommand = new AsyncRelayCommand<Game>(ToggleFavoriteAsync);
+        ContinueGameCommand = new AsyncRelayCommand(() => PlayGameAsync(ContinueGame?.Game), () => CanPlayGame(ContinueGame?.Game));
+        PlayGameCommand = new AsyncRelayCommand<Game>(PlayGameAsync, CanPlayGame);
+        OpenGameCommand = new RelayCommand<Game>(game =>
+        {
+            if (game is null) return;
+            var returnToAllGames = IsInstalledLibraryOpen;
+            IsInstalledLibraryOpen = false;
+            App.Services.GetRequiredService<GameDetailsViewModel>().SelectGame(game,
+                restoreDashboard: returnToAllGames ? () => IsInstalledLibraryOpen = true : null);
+            Navigation.Navigate<GameDetailsPage>();
+        }, CanPlayGame);
+        _depotCheck = depotCheck;
+        DownloadActions = downloadActions;
+
+        Store.Games.CollectionChanged += (_, _) => QueueLibraryRefresh();
+        Store.Downloads.CollectionChanged += OnDownloadsChanged;
+        foreach (var job in Store.Downloads) Watch(job);
+
+        _statsTimer.Tick += (_, _) =>
+        {
+            if (!_statsDirty) return;
+            _statsDirty = false;
+            RaiseDownloadStats();
+        };
+        RefreshLibrary();
+        RefreshDownloads();
+        RefreshStatus();
+    }
+
+    /// <summary>Pause/resume/start go through the Downloads page's commands so both pages behave the same.</summary>
+    public DownloadsViewModel DownloadActions { get; }
+
+    public ObservableCollection<Game> RecentGames { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> PersonalLibrary { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> FavoriteGames { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> RecentlyOpenedGames { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> InstalledGames { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> AllInstalledGames { get; } = new();
+    public RangeObservableCollection<DashboardLibraryEntry> FilteredInstalledGames { get; } = new();
+    private bool _isInstalledLibraryOpen;
+    private string _installedSearchText = "";
+    private string _installedSourceFilter = "All games";
+    private bool _downloadedRefreshPending;
+    private readonly IPcGameScanService? _pcScanner;
+    private CancellationTokenSource? _pcScanCancellation;
+    private bool _isScanningPc;
+    private string _pcScanStatus = "Find games on all local drives";
+    public bool IsScanningPc { get => _isScanningPc; private set => SetProperty(ref _isScanningPc, value); }
+    public string PcScanStatus { get => _pcScanStatus; private set => SetProperty(ref _pcScanStatus, value); }
+    public ICommand ScanPcCommand => new AsyncRelayCommand(ScanPcAsync);
+    public ICommand CancelPcScanCommand => new RelayCommand(() => _pcScanCancellation?.Cancel());
+    private async Task ScanPcAsync()
+    {
+        if (IsScanningPc || _pcScanner is null) return;
+        using var cancellation = new CancellationTokenSource();
+        _pcScanCancellation = cancellation;
+        IsScanningPc = true;
+        try
+        {
+            var progress = new Progress<GameScanProgress>(p => PcScanStatus = $"{p.Games} games · {p.Folders:N0} folders checked · {p.CurrentFolder}");
+            var result = await _pcScanner.ScanAsync(progress, cancellation.Token);
+            PcScanStatus = $"{(result.Cancelled ? "Scan stopped" : "Scan complete")} · {result.Games.Count} games found · {result.Skipped:N0} inaccessible folders skipped";
+            await RefreshAsync(force: true);
+        }
+        catch (Exception e) { PcScanStatus = $"Scan could not finish: {e.Message}"; }
+        finally { IsScanningPc = false; _pcScanCancellation = null; }
+    }
+    public bool IsInstalledLibraryOpen { get => _isInstalledLibraryOpen; private set { if (SetProperty(ref _isInstalledLibraryOpen, value) && value) LoadPersonalArtwork(); } }
+    public string InstalledSearchText { get => _installedSearchText; set { if (SetProperty(ref _installedSearchText, value)) FilterInstalledLibrary(); } }
+    public IReadOnlyList<string> InstalledSources { get; } = new[] { "All games", "Steam", "DepotDownloader", "Epic", "GOG", "Local" };
+    public string InstalledSourceFilter { get => _installedSourceFilter; set { if (SetProperty(ref _installedSourceFilter, value)) FilterInstalledLibrary(); } }
+    public bool HasInstalledResults => FilteredInstalledGames.Count > 0;
+    public string InstalledLibrarySummary => $"{AllInstalledGames.Count} installed games";
+    public ICommand ShowAllGamesCommand => new RelayCommand(() =>
+    {
+        SelectedDiscovery = null;
+        InstalledSearchText = "";
+        InstalledSourceFilter = "All games";
+        IsInstalledLibraryOpen = true;
+        _ = RefreshPlayTimeAsync();
+    });
+    public ICommand CloseInstalledLibraryCommand => new RelayCommand(() => IsInstalledLibraryOpen = false);
+
+    private void FilterInstalledLibrary()
+    {
+        var search = InstalledSearchText.Trim();
+        FilteredInstalledGames.ReplaceWith(AllInstalledGames.Where(entry =>
+            (InstalledSourceFilter == "All games" || entry.SourceLabel == InstalledSourceFilter)
+            && (search.Length == 0 || entry.Game.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase))));
+        OnPropertyChanged(nameof(HasInstalledResults));
+        OnPropertyChanged(nameof(InstalledLibrarySummary));
+    }
+    public bool HasInstalledGames => InstalledGames.Count > 0;
+    public DashboardLibraryEntry? ContinueGame => RecentlyOpenedGames.FirstOrDefault(entry => entry.Game.InstallState == GameInstallState.Installed);
+    public bool HasContinueGame => ContinueGame is not null;
+    public bool HasFavoriteGames => FavoriteGames.Count > 0;
+    public bool HasRecentlyOpenedGames => RecentlyOpenedGames.Count > 0;
+    public bool IsFavorite(int appId) => _activitySnapshot.FavoriteAppIds.Contains(appId);
+    public int FavoriteCount => _activitySnapshot.FavoriteAppIds.Count;
+    public ICommand ToggleFavoriteCommand { get; }
+    public ICommand ContinueGameCommand { get; }
+    private string _activityNotice = string.Empty;
+    public string ActivityNotice { get => _activityNotice; private set => SetProperty(ref _activityNotice, value); }
+    public bool HasActivityNotice => !string.IsNullOrWhiteSpace(ActivityNotice);
+    public ObservableCollection<DownloadJob> ActiveJobs { get; } = new();
+
+    // ---- header ---------------------------------------------------------------------------------
+
+    public string Greeting => DateTime.Now.Hour switch
+    {
+        >= 5 and < 12 => "Good morning",
+        >= 12 and < 18 => "Good afternoon",
+        _ => "Good evening"
+    };
+
+    public string DateLabel => DateTime.Now.ToString("dddd, d MMMM", System.Globalization.CultureInfo.CurrentCulture).ToUpperInvariant();
+
+    public string HeaderSummary
+    {
+        get
+        {
+            var parts = new List<string>
+            {
+                Store.Games.Count == 1 ? "1 game installed" : $"{Store.Games.Count:N0} games installed"
+            };
+            var active = Store.Downloads.Count(job => job.IsActive);
+            if (active > 0) parts.Add(active == 1 ? "1 download running" : $"{active} downloads running");
+            else if (Store.Downloads.Any(job => !job.IsTerminal)) parts.Add("downloads waiting");
+            return string.Join("  ·  ", parts);
+        }
+    }
+
+    public bool IsRefreshing
+    {
+        get => _isRefreshing;
+        private set
+        {
+            if (!SetProperty(ref _isRefreshing, value)) return;
+            OnPropertyChanged(nameof(ShowLibraryNotice));
+            OnPropertyChanged(nameof(LibraryNotice));
+        }
+    }
+
+    public bool ShowLibraryNotice => IsRefreshing || _scan is { Succeeded: false };
+    public string LibraryNotice => IsRefreshing ? "Scanning your library. You can keep browsing while it updates…" : _scan?.Message ?? string.Empty;
+
+    // ---- hero -----------------------------------------------------------------------------------
+
+    public DownloadJob? HeroDownload
+    {
+        get => _heroDownload;
+        private set
+        {
+            if (!SetProperty(ref _heroDownload, value)) return;
+            OnPropertyChanged(nameof(ShowDownloadHero));
+            OnPropertyChanged(nameof(ShowGameHero));
+            OnPropertyChanged(nameof(ShowWelcomeHero));
+            OnPropertyChanged(nameof(HasHeroArt));
+            OnPropertyChanged(nameof(HeroDownloadDetail));
+        }
+    }
+
+    public Game? HeroGame
+    {
+        get => _heroGame;
+        private set
+        {
+            if (!SetProperty(ref _heroGame, value)) return;
+            OnPropertyChanged(nameof(ShowGameHero));
+            OnPropertyChanged(nameof(ShowWelcomeHero));
+            OnPropertyChanged(nameof(HasHeroArt));
+            OnPropertyChanged(nameof(HeroGameDetail));
+        }
+    }
+
+    public bool ShowDownloadHero => HeroDownload is not null;
+    public bool ShowGameHero => HeroDownload is null && HeroGame is not null;
+    public bool ShowWelcomeHero => HeroDownload is null && HeroGame is null;
+    public bool HasHeroArt => !ShowWelcomeHero;
+
+    public string HeroDownloadDetail
+    {
+        get
+        {
+            var job = HeroDownload;
+            if (job is null) return string.Empty;
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(job.SizeSummary)) parts.Add(job.SizeSummary);
+            if (job.IsActive)
+            {
+                if (HasValue(job.Speed)) parts.Add(job.Speed);
+                if (HasValue(job.Eta)) parts.Add($"{job.Eta} left");
+            }
+            else if (!string.IsNullOrWhiteSpace(job.Status))
+            {
+                parts.Add(job.Status);
+            }
+            return string.Join("  ·  ", parts);
+        }
+    }
+
+    public string HeroGameDetail => HeroGame is null
+        ? string.Empty
+        : string.Join("  ·  ", new[] { HeroGame.Size, HeroGame.LastPlayed }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    // ---- stat tiles -----------------------------------------------------------------------------
+
+    public string InstalledCount => Store.Games.Count.ToString("N0");
+
+    public string InstalledSummary => Store.Games.Count == 0
+        ? "No Steam library found"
+        : $"{ByteSize.Format(Store.Games.Sum(game => Math.Max(0, game.SizeOnDiskBytes)))} on disk";
+
+    public string ActiveDownloadCount => Store.Downloads.Count(job => job.IsActive).ToString();
+
+    public string DownloadSummary
+    {
+        get
+        {
+            var queued = Store.Downloads.Count(job => job.State == DownloadJobState.Queued);
+            var paused = Store.Downloads.Count(job => job.State == DownloadJobState.Paused);
+            if (queued == 0 && paused == 0)
+                return Store.Downloads.Any(job => job.IsActive) ? "Nothing waiting" : "Nothing running";
+            var parts = new List<string>();
+            if (queued > 0) parts.Add($"{queued} queued");
+            if (paused > 0) parts.Add($"{paused} paused");
+            return string.Join(" · ", parts);
+        }
+    }
+
+    public string CurrentSpeed
+    {
+        get
+        {
+            var speed = Store.Downloads.FirstOrDefault(job => job.IsActive && !string.IsNullOrWhiteSpace(job.Speed))?.Speed;
+            return string.IsNullOrWhiteSpace(speed) ? "—" : speed;
+        }
+    }
+
+    public string SpeedSummary
+    {
+        get
+        {
+            var active = Store.Downloads.FirstOrDefault(job => job.IsActive);
+            if (active is null) return "Idle";
+            return HasValue(active.Eta) ? $"{active.Eta} left" : active.GameName;
+        }
+    }
+
+    public string StorageFree => _storageFree < 0 ? "—" : ByteSize.Format(_storageFree);
+
+    public string StorageSummary => _storageFree < 0
+        ? "Drive not available"
+        : $"free of {ByteSize.Format(_storageTotal)} on {_storageDrive}";
+
+    public double StorageUsedPercent => _storageTotal <= 0 ? 0 : 100.0 * (_storageTotal - _storageFree) / _storageTotal;
+
+    public bool IsStorageLow => _storageTotal > 0 && _storageFree < _storageTotal * 0.1;
+
+    // ---- SteamMidra-style system info ---------------------------------------------------------------
+
+    public string SteamPath => _scan is { Succeeded: true, SteamRoot.Length: > 0 } scan ? scan.SteamRoot : "Not configured";
+    public string LibraryFolderCountLabel => (_scan?.LibraryFolders.Count ?? 0).ToString();
+    public string DetectedAppCountLabel => (_scan?.Apps.Count ?? 0).ToString();
+    public string TotalGameSize => ByteSize.Format(Store.Games.Sum(g => Math.Max(0, g.SizeOnDiskBytes)));
+    public string DepotToolVersionLabel => _depotStatus is { IsReady: true } status
+        ? (string.IsNullOrWhiteSpace(status.Version) || status.Version == "unknown" ? "Ready" : $"v{status.Version}")
+        : "Not configured";
+    public bool IsDepotReady => _depotStatus?.IsReady == true;
+    public string LastScanLabel => _lastRefresh == DateTime.MinValue
+        ? "Never"
+        : _lastRefresh.ToLocalTime().ToString("HH:mm");
+
+    // ---- lists ----------------------------------------------------------------------------------
+
+    public bool HasRecentGames => RecentGames.Count > 0;
+    public bool ShowNoGames => RecentGames.Count == 0;
+    public string NoGamesDetail => _scan is { Succeeded: false } scan && !string.IsNullOrWhiteSpace(scan.Message)
+        ? scan.Message
+        : "Set your Steam folder in Settings, or let the app detect it automatically.";
+
+    public bool HasActiveJobs => ActiveJobs.Count > 0;
+    public bool ShowNoJobs => ActiveJobs.Count == 0;
+    public string JobCountLabel => Store.Downloads.Count(job => !job.IsTerminal).ToString();
+
+    public IReadOnlyList<DashboardStatusItem> StatusItems
+    {
+        get => _statusItems;
+        private set => SetProperty(ref _statusItems, value);
+    }
+
+    public string StatusSummary => _statusItems.All(item => item.IsOk)
+        ? "Everything is set up"
+        : $"{_statusItems.Count(item => !item.IsOk)} of {_statusItems.Count} need attention";
+
+    // ---- commands -------------------------------------------------------------------------------
+
+    public ICommand RefreshCommand => new AsyncRelayCommand(() => RefreshAsync(force: true));
+    public ICommand PlayGameCommand { get; }
+    public ICommand OpenGameCommand { get; }
+    public ICommand OpenGameFolderCommand => new RelayCommand<Game>(OpenGameFolder);
+    public ICommand NavigateDownloadsCommand => new RelayCommand(() => Navigation.Navigate<DownloadsPage>());
+    public ICommand NavigateLibraryCommand => new RelayCommand(() => Navigation.Navigate<LibraryPage>());
+    public ICommand NavigateFavoritesCommand => new RelayCommand(() =>
+    {
+        var library = App.Services.GetRequiredService<LibraryViewModel>();
+        library.SearchText = string.Empty;
+        library.SelectedTypeFilter = "All games";
+        library.SelectedSourceFilter = "Favorites";
+        Navigation.Navigate<LibraryPage>();
+    });
+    public ICommand ExploreSourceCommand => new RelayCommand<string>(source =>
+    {
+        if (source is null) return;
+        var library = App.Services.GetRequiredService<LibraryViewModel>();
+        library.SearchText = string.Empty;
+        library.SelectedTypeFilter = "All games";
+        library.SelectedSourceFilter = source;
+        Navigation.Navigate<LibraryPage>();
+    });
+    public ICommand NavigateSettingsCommand => new RelayCommand(() => Navigation.Navigate<SettingsPage>());
+    public ICommand NavigateFixesCommand => new RelayCommand(() => Navigation.Navigate<GameFixesPage>());
+    public ICommand NavigateDlcUnlockerCommand => new RelayCommand(() => Navigation.Navigate<CreamApiPage>());
+    public ICommand NavigateSteamlessCommand => new RelayCommand(() => Navigation.Navigate<SteamlessPage>());
+    public ICommand NavigateDenuvoActivationCommand => new RelayCommand(() => Navigation.Navigate<DenuvoActivationPage>());
+    public ICommand NavigateDepotDownloaderCommand => new RelayCommand(() => Navigation.Navigate<DepotDownloaderPage>());
+    public ICommand NavigateFamilyShareCommand => new RelayCommand(() => Navigation.Navigate<FamilySharePage>());
+    public ICommand OpenManifestFolderCommand => new RelayCommand(OpenManifestFolder);
+    public ICommand NavigateGoldbergCommand => new RelayCommand(() => Navigation.Navigate<GoldbergPage>());
+
+    public override Task OnNavigatedToAsync()
+    {
+        _ = EnsureDiscoveryArtworkAsync();
+        _ = RefreshActivityAsync();
+        return RefreshAsync(force: false);
+    }
+
+    public async Task RefreshAsync(bool force)
+    {
+        if (IsRefreshing || (!force && DateTime.UtcNow - _lastRefresh < RefreshDebounce)) return;
+        IsRefreshing = true;
+        _downloadedRefreshPending = false;
+        _lastRefresh = DateTime.UtcNow;
+        _ = EnsureDiscoveryArtworkAsync(force);
+        try
+        {
+            try { _scan = await _librarySync.RefreshAsync(); }
+            catch (Exception exception) { _scan = SteamLibraryScanResult.Failure($"The Steam library could not be read ({exception.GetType().Name})."); }
+
+            RefreshLibrary();
+            if (_playTime is not null) await _playTime.ConfigureAsync(_settings.Load(), Store.Games);
+            _ = RefreshStorageAsync();
+            RefreshDownloads();
+            RefreshStatus();
+
+            await RefreshDepotStatusAsync(force);
+            RefreshStatus();
+        }
+        finally
+        {
+            IsRefreshing = false;
+            OnPropertyChanged(nameof(Greeting));
+            OnPropertyChanged(nameof(DateLabel));
+            OnPropertyChanged(nameof(DepotToolVersionLabel));
+            OnPropertyChanged(nameof(IsDepotReady));
+            OnPropertyChanged(nameof(LastScanLabel));
+            if (_downloadedRefreshPending) _ = RefreshAsync(force: true);
+        }
+    }
+
+    // ---- refresh helpers ------------------------------------------------------------------------
+
+    private void RefreshLibrary()
+    {
+        var favoriteIds = _activitySnapshot.FavoriteAppIds.ToHashSet();
+        var opened = _activitySnapshot.Launches.ToDictionary(item => item.AppId, item => (DateTimeOffset?)item.OpenedAt);
+        var recent = Store.Games
+            .Where(game => game.InstallState != GameInstallState.NotInstalled)
+            .OrderByDescending(game => favoriteIds.Contains(game.AppId))
+            .ThenByDescending(game => opened.GetValueOrDefault(game.AppId))
+            .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(RecentGameCount)
+            .ToList();
+
+        if (!recent.SequenceEqual(RecentGames))
+        {
+            DownloadPresentation.Synchronize(RecentGames, recent);
+        }
+
+        PersonalLibrary.ReplaceWith(recent.Select(game => new DashboardLibraryEntry(game, favoriteIds.Contains(game.AppId), opened.GetValueOrDefault(game.AppId))));
+        AllInstalledGames.ReplaceWith(Store.Games.Where(game => game.InstallState == GameInstallState.Installed && !GameClassification.IsRuntime(game.AppId, game.Name))
+            .OrderByDescending(game => favoriteIds.Contains(game.AppId))
+            .ThenByDescending(game => opened.GetValueOrDefault(game.AppId))
+            .ThenBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(game => new DashboardLibraryEntry(game, favoriteIds.Contains(game.AppId), opened.GetValueOrDefault(game.AppId))));
+        InstalledGames.ReplaceWith(AllInstalledGames.Take(8));
+        FilterInstalledLibrary();
+        OnPropertyChanged(nameof(HasInstalledGames));
+        ApplyPlayTime();
+        var favorites = favoriteIds.Select(appId => Store.Games.FirstOrDefault(game => game.AppId == appId)
+            ?? _catalogFavorites.GetValueOrDefault(appId)
+            ?? new Game { AppId = appId, Name = $"App {appId}", InstallState = GameInstallState.NotInstalled });
+        if (FavoriteGames.ReplaceWith(favorites
+            .OrderBy(game => game.Name, StringComparer.OrdinalIgnoreCase).Take(RecentGameCount)
+            .Select(game => new DashboardLibraryEntry(game, true, opened.GetValueOrDefault(game.AppId)))))
+            OnPropertyChanged(nameof(FavoriteGames));
+        RecentlyOpenedGames.ReplaceWith(Store.Games.Where(game => game.InstallState != GameInstallState.NotInstalled && opened.ContainsKey(game.AppId))
+            .OrderByDescending(game => opened[game.AppId]).Take(RecentGameCount)
+            .Select(game => new DashboardLibraryEntry(game, favoriteIds.Contains(game.AppId), opened[game.AppId])));
+
+        HeroGame = ContinueGame?.Game ?? recent.FirstOrDefault();
+        OnPropertyChanged(nameof(ContinueGame));
+        OnPropertyChanged(nameof(HasContinueGame));
+        OnPropertyChanged(nameof(HasFavoriteGames));
+        OnPropertyChanged(nameof(FavoriteCount));
+        OnPropertyChanged(nameof(HasRecentlyOpenedGames));
+        (ContinueGameCommand as AsyncRelayCommand)?.NotifyCanExecuteChanged();
+        (PlayGameCommand as IRelayCommand)?.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasRecentGames));
+        OnPropertyChanged(nameof(ShowNoGames));
+        OnPropertyChanged(nameof(NoGamesDetail));
+        OnPropertyChanged(nameof(InstalledCount));
+        OnPropertyChanged(nameof(InstalledSummary));
+        OnPropertyChanged(nameof(HeaderSummary));
+        OnPropertyChanged(nameof(SteamPath));
+        OnPropertyChanged(nameof(LibraryFolderCountLabel));
+        OnPropertyChanged(nameof(DetectedAppCountLabel));
+        OnPropertyChanged(nameof(TotalGameSize));
+        LoadPersonalArtwork();
+    }
+
+    public async Task RefreshActivityAsync()
+    {
+        try
+        {
+            _activitySnapshot = await _activity.GetAsync();
+            RefreshLibrary();
+            await EnsureFavoriteDetailsAsync();
+        }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Library", $"Personal library unavailable: {exception.GetType().Name}."); }
+    }
+
+    public async Task RefreshPlayTimeAsync()
+    {
+        if (_playTime is null || _readingPlayTime) return;
+        _readingPlayTime = true;
+        try
+        {
+            _playTimeSnapshot = await _playTime.ReadAsync() ?? PlayTimeSnapshot.Empty;
+            ApplyPlayTime();
+        }
+        catch (Exception e) { Logging.Add(LogLevel.Debug, "Playtime", $"Playtime unavailable: {e.GetType().Name}."); }
+        finally { _readingPlayTime = false; }
+    }
+
+    private void ApplyPlayTime()
+    {
+        var fresh = _settings.Load().TrackPlayTime && DateTimeOffset.UtcNow - _playTimeSnapshot.UpdatedAt < TimeSpan.FromSeconds(35);
+        var byId = _playTimeSnapshot.Games.Where(g => g.AppId != 0).DistinctBy(g => g.AppId).ToDictionary(g => g.AppId);
+        foreach (var entry in AllInstalledGames) entry.UpdatePlayTime(byId.GetValueOrDefault(entry.Game.AppId), fresh);
+    }
+
+    private Task EnsureFavoriteDetailsAsync() => _favoriteDetailsTask is { IsCompleted: false }
+        ? _favoriteDetailsTask : _favoriteDetailsTask = ResolveFavoriteDetailsAsync();
+
+    private async Task ResolveFavoriteDetailsAsync()
+    {
+        var savedIds = _activitySnapshot.FavoriteAppIds.ToHashSet();
+        foreach (var appId in _catalogFavorites.Keys.Where(appId => !savedIds.Contains(appId)).ToArray())
+            _catalogFavorites.Remove(appId);
+        _resolvedFavoriteAppIds.RemoveWhere(appId => !savedIds.Contains(appId));
+        if (!savedIds.Any(appId => !_resolvedFavoriteAppIds.Contains(appId)
+            && !Store.Games.Any(game => game.AppId == appId))) return;
+
+        try
+        {
+            // Favorites and live search share one cached catalog request. Saving a catalog game
+            // never adds it to the installed library or invents an installation/launch target.
+            _searchCatalogTask ??= Task.Run(() => _catalog.GetCatalogAsync());
+            var snapshot = await _searchCatalogTask;
+            savedIds = _activitySnapshot.FavoriteAppIds.ToHashSet();
+            foreach (var item in snapshot.Items.Where(item => savedIds.Contains(item.AppId)))
+            {
+                _catalogFavorites.TryGetValue(item.AppId, out var previous);
+                _catalogFavorites[item.AppId] = new Game
+                {
+                    AppId = item.AppId, Name = string.IsNullOrWhiteSpace(item.Name) ? $"App {item.AppId}" : item.Name,
+                    InstallState = GameInstallState.NotInstalled,
+                    Size = "Not installed", HeaderImage = item.HeaderImage ?? previous?.HeaderImage,
+                    ArtworkImage = item.ArtworkImage ?? previous?.ArtworkImage
+                };
+            }
+            if (snapshot.Succeeded) _resolvedFavoriteAppIds.UnionWith(savedIds);
+            else _searchCatalogTask = null;
+            RefreshLibrary();
+        }
+        catch (Exception exception)
+        {
+            _searchCatalogTask = null;
+            Logging.Add(LogLevel.Debug, "Library", $"Favorite titles are temporarily unavailable: {exception.GetType().Name}.");
+        }
+    }
+
+    private void LoadPersonalArtwork()
+    {
+        if (_personalArtworkCancellation is not { IsCancellationRequested: false } cancellation) return;
+        var visible = PersonalLibrary.Concat(FavoriteGames).Concat(IsInstalledLibraryOpen ? AllInstalledGames.Take(24) : InstalledGames).Select(entry => entry.Game).DistinctBy(game => game.AppId).ToArray();
+        _personalArtworkRequested.RemoveWhere(game => !visible.Contains(game));
+        foreach (var game in visible)
+            if ((game.HeaderImage is null || game.ArtworkImage is null && InstalledGames.Any(entry => ReferenceEquals(entry.Game, game))) && _personalArtworkRequested.Add(game))
+                _ = LoadPersonalHeaderAsync(game, cancellation.Token);
+    }
+
+    private async Task LoadPersonalHeaderAsync(Game game, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _searchArtworkGate.WaitAsync(cancellationToken);
+            try
+            {
+                var loadPortrait = game.AppId <= 0 || InstalledGames.Any(entry => ReferenceEquals(entry.Game, game));
+                await Task.Run(() => loadPortrait
+                    ? _artwork.LoadAsync(game, cancellationToken)
+                    : _artwork.LoadHeadersAsync(new[] { game }, cancellationToken), cancellationToken);
+            }
+            finally { _searchArtworkGate.Release(); }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { Logging.Add(LogLevel.Debug, "Library", $"Optional cover unavailable: {exception.GetType().Name}."); }
+    }
+
+    private void OnActivityChanged(object? sender, EventArgs args)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is { HasShutdownStarted: false } && !dispatcher.CheckAccess())
+            dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => _ = RefreshActivityAsync()));
+        else if (dispatcher?.HasShutdownStarted != true) _ = RefreshActivityAsync();
+    }
+
+    private async Task ToggleFavoriteAsync(Game? game)
+    {
+        if (game is null || game.AppId <= 0) return;
+        try
+        {
+            var favorite = await _activity.ToggleFavoriteAsync(game.AppId);
+            if (favorite && !_catalogFavorites.ContainsKey(game.AppId))
+                _catalogFavorites[game.AppId] = new Game
+                {
+                    AppId = game.AppId, Name = string.IsNullOrWhiteSpace(game.Name) ? $"App {game.AppId}" : game.Name,
+                    InstallState = GameInstallState.NotInstalled,
+                    Size = "Not installed", HeaderImage = game.HeaderImage, ArtworkImage = game.ArtworkImage,
+                    CoverColor = game.CoverColor, CoverGlyph = game.CoverGlyph
+                };
+            await RefreshActivityAsync();
+            ActivityNotice = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            ActivityNotice = "Your favorite could not be saved. Check access to the Steamy data folder.";
+            Logging.Add(LogLevel.Warning, "Library", $"Favorite could not be saved: {exception.Message}");
+        }
+        OnPropertyChanged(nameof(HasActivityNotice));
+    }
+
+    private void RefreshDownloads()
+    {
+        var open = Store.Downloads
+            .Where(job => !job.IsTerminal)
+            .OrderBy(job => job.IsActive ? 0 : job.State == DownloadJobState.Paused ? 1 : 2)
+            .ThenBy(job => job.Started)
+            .ToList();
+
+        var preview = open.Take(JobPreviewCount).ToList();
+        if (!preview.SequenceEqual(ActiveJobs))
+        {
+            DownloadPresentation.Synchronize(ActiveJobs, preview);
+        }
+
+        HeroDownload = open.FirstOrDefault();
+        OnPropertyChanged(nameof(HasActiveJobs));
+        OnPropertyChanged(nameof(ShowNoJobs));
+        OnPropertyChanged(nameof(JobCountLabel));
+        RaiseDownloadStats();
+    }
+
+    private void RaiseDownloadStats()
+    {
+        OnPropertyChanged(nameof(ActiveDownloadCount));
+        OnPropertyChanged(nameof(DownloadSummary));
+        OnPropertyChanged(nameof(CurrentSpeed));
+        OnPropertyChanged(nameof(SpeedSummary));
+        OnPropertyChanged(nameof(HeaderSummary));
+        OnPropertyChanged(nameof(HeroDownloadDetail));
+    }
+
+    private async Task RefreshStorageAsync()
+    {
+        var probe = _scan is { Succeeded: true, SteamRoot.Length: > 0 } scan ? scan.SteamRoot : Path.GetTempPath();
+        var storage = await Task.Run(() =>
+        {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(probe));
+            var drive = string.IsNullOrWhiteSpace(root) ? null : new DriveInfo(root);
+            if (drive is { IsReady: true })
+            {
+                return (Free: drive.AvailableFreeSpace, Total: drive.TotalSize, Drive: drive.Name.TrimEnd('\\', '/'));
+            }
+            else
+            {
+                return (Free: -1L, Total: 0L, Drive: string.Empty);
+            }
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return (Free: -1L, Total: 0L, Drive: string.Empty);
+        }
+        });
+        _storageFree = storage.Free;
+        _storageTotal = storage.Total;
+        _storageDrive = storage.Drive;
+
+        OnPropertyChanged(nameof(StorageFree));
+        OnPropertyChanged(nameof(StorageSummary));
+        OnPropertyChanged(nameof(StorageUsedPercent));
+        OnPropertyChanged(nameof(IsStorageLow));
+    }
+
+    private async Task RefreshDepotStatusAsync(bool force)
+    {
+        var path = _settings.Load().DepotDownloaderPath ?? string.Empty;
+        if (!force && _depotStatus is not null && path == _depotStatusPath) return;
+        _depotStatusPath = path;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            _depotStatus = await _depotCheck.CheckAsync(path, timeout.Token);
+        }
+        catch (Exception exception)
+        {
+            _depotStatus = new DepotDownloaderToolStatus(false, path, string.Empty, $"Check failed ({exception.GetType().Name}).", DateTime.Now);
+        }
+    }
+
+    private void RefreshStatus()
+    {
+        var settings = _settings.Load();
+
+        var library = _scan switch
+        {
+            null => new DashboardStatusItem("Steam library", "Not scanned yet.", false, "Settings", NavigateSettingsCommand),
+            { Succeeded: true } scan => new DashboardStatusItem("Steam library",
+                $"{Plural(scan.LibraryFolders.Count, "library folder")} · {Plural(scan.Apps.Count, "game")}", true, "Settings", NavigateSettingsCommand),
+            var scan => new DashboardStatusItem("Steam library", scan.Message, false, "Set folder", NavigateSettingsCommand)
+        };
+
+        var depot = _depotStatus switch
+        {
+            null => new DashboardStatusItem("DepotDownloader", "Checking…", true, "Settings", NavigateSettingsCommand),
+            { IsReady: true } status => new DashboardStatusItem("DepotDownloader",
+                string.IsNullOrWhiteSpace(status.Version) || status.Version == "unknown" ? "Ready" : $"Ready · v{status.Version}", true, "Settings", NavigateSettingsCommand),
+            var status => new DashboardStatusItem("DepotDownloader", status.Message, false, "Set up", NavigateSettingsCommand)
+        };
+
+        var fixSource = FixSource.Resolve(settings.FixMirrorUrl);
+        var fixes = fixSource is null
+            ? new DashboardStatusItem("Fixes source",
+                string.IsNullOrWhiteSpace(settings.FixMirrorUrl) ? "No fixes source is configured yet." : "The URL in Settings is not valid.",
+                false, "Set up", NavigateSettingsCommand)
+            : new DashboardStatusItem("Fixes source",
+                DescribeSource(settings.FixMirrorUrl), true, "Settings", NavigateSettingsCommand);
+
+        StatusItems = new[] { library, depot, fixes };
+        OnPropertyChanged(nameof(StatusSummary));
+    }
+
+    // ---- live updates ---------------------------------------------------------------------------
+
+    private void OnDownloadsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var job in _watchedJobs) job.PropertyChanged -= OnJobChanged;
+            _watchedJobs.Clear();
+            foreach (var job in Store.Downloads) Watch(job);
+        }
+        else
+        {
+            foreach (DownloadJob job in e.OldItems ?? Array.Empty<DownloadJob>())
+                if (_watchedJobs.Remove(job)) job.PropertyChanged -= OnJobChanged;
+            foreach (DownloadJob job in e.NewItems ?? Array.Empty<DownloadJob>())
+                Watch(job);
+        }
+
+        QueueDownloadRefresh();
+    }
+
+    private void Watch(DownloadJob job)
+    {
+        if (_watchedJobs.Add(job)) job.PropertyChanged += OnJobChanged;
+    }
+
+    private void OnJobChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DownloadJob.State)) QueueDownloadRefresh();
+        else if (e.PropertyName is nameof(DownloadJob.BytesPerSecond) or nameof(DownloadJob.Progress)
+                 or nameof(DownloadJob.Speed) or nameof(DownloadJob.SizeSummary)) _statsDirty = true;
+    }
+
+    // Progress events arrive many times a second; batch them into one refresh per dispatcher pass.
+    private void QueueDownloadRefresh() => Queue(ref _downloadRefreshQueued, () => { _downloadRefreshQueued = false; RefreshDownloads(); });
+
+    private void QueueLibraryRefresh() => Queue(ref _libraryRefreshQueued, () => { _libraryRefreshQueued = false; RefreshLibrary(); });
+
+    private static void Queue(ref bool queued, Action refresh)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            refresh();
+            return;
+        }
+
+        if (queued) return;
+        queued = true;
+        dispatcher.BeginInvoke(DispatcherPriority.Background, refresh);
+    }
+
+    // ---- actions --------------------------------------------------------------------------------
+
+    private bool CanPlayGame(Game? game) => game is { AppId: not 0, InstallState: GameInstallState.Installed }
+        && Store.Games.Any(installed => installed.AppId == game.AppId && installed.InstallState == GameInstallState.Installed);
+
+    private async Task PlayGameAsync(Game? game)
+    {
+        if (game is null || !CanPlayGame(game)) return;
+        var result = await App.Services.GetRequiredService<IGameLaunchService>().LaunchAsync(game);
+        if (result.Succeeded) await RefreshActivityAsync();
+        else Logging.Add(LogLevel.Warning, "Library", result.Message);
+    }
+
+    private void OpenGameFolder(Game? game)
+    {
+        if (game is null || string.IsNullOrWhiteSpace(game.InstallFolder) || !Directory.Exists(game.InstallFolder)) return;
+        StartShell(game.InstallFolder);
+    }
+
+    private void OpenManifestFolder()
+    {
+        var settings = _settings.Load();
+        var folder = !string.IsNullOrWhiteSpace(settings.DownloadFolder) ? settings.DownloadFolder
+            : !string.IsNullOrWhiteSpace(settings.WorkingDirectory) ? settings.WorkingDirectory
+            : null;
+        if (folder is not null && Directory.Exists(folder))
+            StartShell(folder);
+    }
+
+    private bool StartShell(string target)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            // Shell activation can hand the URI to an already running Steam process and return
+            // no process object. Record the accepted launch request, without claiming playtime.
+            return true;
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or FileNotFoundException)
+        {
+            Logging.Add(LogLevel.Warning, "Dashboard", $"Could not open {target}: {exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool HasValue(string? text) => !string.IsNullOrWhiteSpace(text) && text != "—";
+
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count:N0} {noun}s";
+
+    private static string DescribeSource(string configured)
+    {
+        var text = configured.Trim();
+        if (!text.Contains("://", StringComparison.Ordinal)) text = "https://" + text;
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri)
+            ? (uri.Host + uri.AbsolutePath).TrimEnd('/')
+            : configured;
+    }
+}

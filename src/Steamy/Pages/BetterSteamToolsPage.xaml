@@ -1,0 +1,140 @@
+<Page x:Class="Steamy.Pages.BetterSteamToolsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      ScrollViewer.CanContentScroll="False"
+      Background="{DynamicResource PageBackgroundBrush}" UseLayoutRounding="True" SnapsToDevicePixels="True">
+  <Page.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <Style x:Key="ToolHint" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+
+      <Setter Property="FontSize" Value="12" /><Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="ToolOptions" TargetType="Expander" BasedOn="{StaticResource {x:Type Expander}}">
+    <Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" /><Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Expander">
+        <StackPanel>
+          <ToggleButton Content="{TemplateBinding Header}" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                        Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" Cursor="Hand"
+                        FocusVisualStyle="{StaticResource GalleryKeyboardFocus}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+            <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+              <Border Background="Transparent" Padding="0,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                  <Path x:Name="Arrow" Data="M 1,1 L 5,5 L 1,9" Width="10" Height="10" Stroke="{TemplateBinding Foreground}" StrokeThickness="1.2" Margin="0,0,8,0" VerticalAlignment="Center" />
+                  <ContentPresenter VerticalAlignment="Center" />
+                </StackPanel>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True"><Setter TargetName="Arrow" Property="Data" Value="M 1,1 L 5,5 L 9,1" /></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.8" /></Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate></ToggleButton.Template>
+          </ToggleButton>
+          <ContentPresenter ContentSource="Content" Visibility="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+  </Page.Resources>
+  <Grid Background="Transparent">
+    <Grid.RowDefinitions><RowDefinition /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+    <ScrollViewer x:Name="ToolScrollHost" Style="{StaticResource PageScrollHostStyle}" Padding="28,28,28,24">
+      <StackPanel x:Name="ToolContent" MaxWidth="780" HorizontalAlignment="Stretch">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <TextBlock Text="BetterSteamTools" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+          <TextBlock x:Name="ConnectionHint" Grid.Column="1" Text="{Binding ConnectionLabel}" Style="{StaticResource ToolHint}" FontSize="11" VerticalAlignment="Center" Visibility="{Binding BackendSetupRequired, Converter={StaticResource BoolToVis}}" />
+        </Grid>
+        <Border x:Name="BackendSetupNotice" Margin="0,18,0,0" Padding="16" CornerRadius="12" Background="{DynamicResource SurfaceBrush}"
+                Visibility="{Binding BackendSetupRequired, Converter={StaticResource BoolToVis}}">
+          <StackPanel>
+            <TextBlock Text="Install BetterSteamTools" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Text="Close Steam first. Adding a game or dropping files will install the verified backend before importing metadata."
+                       Style="{StaticResource ToolHint}" FontSize="11" Margin="0,6,0,12" />
+            <ui:Button Content="Install BetterSteamTools" Command="{Binding InstallBackendCommand}" Appearance="Primary" HorizontalAlignment="Left" />
+          </StackPanel>
+        </Border>
+        <Border x:Name="MetadataDropZone" Margin="0,22,0,16" CornerRadius="18" Padding="28" MinHeight="260"
+                AllowDrop="True" DragOver="Metadata_DragOver" DragLeave="Metadata_DragLeave" Drop="Metadata_Drop" IsEnabled="{Binding IsIdle}"
+                ToolTip="Drop to install. Leave App ID empty to detect games; manifest-only files are cached."
+                AutomationProperties.Name="Drop ZIP, 7z or RAR metadata archives">
+          <Border.Style><Style TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" /><Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers><Trigger Property="Tag" Value="AcceptedDrop">
+              <Setter Property="Background" Value="#146C68B8" /><Setter Property="BorderBrush" Value="{DynamicResource VioletBrush}" />
+            </Trigger></Style.Triggers>
+          </Style></Border.Style>
+          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <ui:SymbolIcon Symbol="ArrowDownload24" FontSize="30" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,16" />
+            <TextBlock Text="Drag &amp; drop" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextAlignment="Center" />
+            <TextBlock Text="ZIP · 7z · RAR  —  Lua + manifests inside" Style="{StaticResource ToolHint}" TextAlignment="Center" Margin="0,8,0,18" />
+            <ui:Button x:Name="BrowseMetadataButton" Content="Browse files" Icon="{ui:SymbolIcon FolderOpen24}" Command="{Binding BrowseFilesCommand}" Appearance="Transparent" HorizontalAlignment="Center" Padding="14,8" MinWidth="120" />
+          </StackPanel>
+        </Border>
+
+        <Expander x:Name="GameExpander" Header="Add by App ID or Steam link" Style="{StaticResource ToolOptions}" IsExpanded="True">
+          <StackPanel Margin="0,12,0,20">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <ui:TextBox x:Name="GameInputBox" Text="{Binding GameInput, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="App ID or Steam store link" MinHeight="42" IsEnabled="{Binding IsIdle}" AutomationProperties.Name="Game App ID or Steam store link">
+                <ui:TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding AddGameCommand}" /></ui:TextBox.InputBindings>
+              </ui:TextBox>
+              <ui:Button x:Name="AddGameButton" Grid.Column="1" Content="Add to Steam" Icon="{ui:SymbolIcon Add24}" Command="{Binding AddGameCommand}" Appearance="Primary" Margin="10,0,0,0" MinWidth="140" Padding="14,8" AutomationProperties.Name="Add game to Steam" />
+            </Grid>
+            <TextBlock x:Name="SourceLabel" Text="Source" Style="{StaticResource ToolHint}" TextAlignment="Left" Margin="0,14,0,6" />
+            <ComboBox x:Name="SourcePicker" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}" DisplayMemberPath="Label" IsEnabled="{Binding IsIdle}" HorizontalContentAlignment="Left"
+                      ToolTip="Automatic checks available sources. Sushi is free; API providers use your Settings credentials." AutomationProperties.Name="Game metadata source" />
+            <WrapPanel Margin="0,10,0,0" HorizontalAlignment="Left">
+              <ui:Button Content="Source settings" Command="{Binding OpenSettingsCommand}" Appearance="Transparent" FontSize="11" Margin="0,0,8,0" />
+              <ui:Button Content="Browse games" Command="{Binding OpenGamesCommand}" Appearance="Transparent" FontSize="11" />
+            </WrapPanel>
+          </StackPanel>
+        </Expander>
+
+        <Expander x:Name="SteamSetupExpander" Header="Steam setup" Style="{StaticResource ToolOptions}" Margin="0,6,0,0">
+          <Border x:Name="SteamConnectionPanel" Padding="0,12,0,12">
+            <StackPanel>
+              <TextBlock Text="{Binding BackendLabel}" Style="{StaticResource ToolHint}" Margin="0,0,0,10" Visibility="{Binding BackendSetupRequired, Converter={StaticResource BoolToVis}}" />
+              <Grid IsEnabled="{Binding IsIdle}">
+                <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ui:TextBox x:Name="SteamFolderBox" Text="{Binding SteamRoot, UpdateSourceTrigger=LostFocus}" PlaceholderText="Steam folder containing steam.exe" LostKeyboardFocus="SteamRoot_LostFocus" AutomationProperties.Name="Steam installation folder" />
+                <ui:Button Grid.Column="1" Content="Browse" Command="{Binding BrowseSteamCommand}" Margin="8,0,0,0" Appearance="Transparent" />
+                <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon ArrowSync24}" Command="{Binding DetectCommand}" Margin="8,0,0,0" Appearance="Transparent" ToolTip="Detect Steam and installed metadata" AutomationProperties.Name="Detect Steam" />
+              </Grid>
+              <WrapPanel Margin="0,12,0,0">
+                <ui:Button x:Name="InstallBackendButton" Content="Install / update backend" Command="{Binding InstallBackendCommand}" Appearance="Secondary" Margin="0,0,8,8" />
+                <ui:Button Content="Start Steam" Command="{Binding OpenSteamCommand}" Appearance="Transparent" Margin="0,0,0,8" />
+              </WrapPanel>
+              <TextBlock Text="Close Steam before installing the backend." Style="{StaticResource ToolHint}" FontSize="11" />
+              <TextBlock Text="{Binding AddedCount}" Style="{StaticResource ToolHint}" Margin="0,20,0,10" />
+              <ItemsControl ItemsSource="{Binding AddedGames}">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate><DataTemplate>
+                  <TextBlock Text="{Binding Label}" Style="{StaticResource ToolHint}" Margin="0,0,16,8" />
+                </DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding FilesLabel}" Style="{StaticResource ToolHint}" Margin="0,4,0,8" Visibility="{Binding HasSelectedFiles, Converter={StaticResource BoolToVis}}" />
+              <TextBlock Text="Leave App ID empty to detect games. Manifest-only files are cached. Metadata does not download game files or guarantee source availability." Style="{StaticResource ToolHint}" FontSize="11" />
+              <ui:Button Content="BetterSteamTools project" Command="{Binding OpenProjectCommand}" Appearance="Transparent" FontSize="11" HorizontalAlignment="Left" Margin="0,10,0,0" />
+            </StackPanel>
+          </Border>
+        </Expander>
+        <Expander Header="Source details" Style="{StaticResource ToolOptions}" Margin="0,10,0,0"
+                  Visibility="{Binding HasSourceDetails, Converter={StaticResource BoolToVis}}">
+          <TextBlock Text="{Binding SourceDetails}" Style="{StaticResource ToolHint}" FontSize="11" Margin="0,6,0,12" />
+        </Expander>
+      </StackPanel>
+    </ScrollViewer>
+    <Grid x:Name="OperationFooter" Grid.Row="1" Margin="28,8,28,14" MaxWidth="780">
+      <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+      <StackPanel>
+        <TextBlock x:Name="OperationStatus" Text="{Binding Status}" Style="{StaticResource ToolHint}" FontSize="11" AutomationProperties.LiveSetting="Polite" />
+        <ProgressBar IsIndeterminate="True" Height="3" Margin="0,8,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+      </StackPanel>
+      <ui:Button x:Name="CancelOperationButton" Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}" Appearance="Transparent" Margin="10,0,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+    </Grid>
+  </Grid>
+</Page>

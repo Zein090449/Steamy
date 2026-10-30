@@ -1,0 +1,70 @@
+using System.Globalization;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using Microsoft.Extensions.DependencyInjection;
+using Steamy.Services;
+using Steamy.ViewModels;
+
+namespace Steamy.Pages;
+
+public partial class DenuvoActivationPage : Page
+{
+    public DenuvoActivationPage()
+    {
+        InitializeComponent();
+        DataContext = App.Services.GetRequiredService<DenuvoActivationViewModel>();
+        Loaded += (_, _) => _ = ViewModel.EnsureToolDownloadedAsync();
+    }
+
+    private DenuvoActivationViewModel ViewModel => (DenuvoActivationViewModel)DataContext;
+
+    private void ActivationHelp_Click(object sender, RoutedEventArgs e) =>
+        ActivationHelpPopup.IsOpen = !ActivationHelpPopup.IsOpen;
+
+    private void ActivationHelp_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        ActivationHelpPopup.IsOpen = false;
+        ActivationHelpButton.Focus();
+        e.Handled = true;
+    }
+
+    private void ActivationCommunity_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); }
+        catch (System.ComponentModel.Win32Exception) { }
+        e.Handled = true;
+    }
+
+    private void Suggestion_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.DataContext is SteamSearchEntry entry)
+            ViewModel.SelectSuggestion(entry);
+    }
+
+    private void SearchBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && ViewModel.GenerateCommand.CanExecute(null))
+            ViewModel.GenerateCommand.Execute(null);
+    }
+}
+
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is int n && n > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public sealed class StringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is string s && !string.IsNullOrWhiteSpace(s) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

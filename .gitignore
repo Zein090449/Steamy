@@ -1,0 +1,60 @@
+# .NET build output
+**/bin/
+**/obj/
+publish/
+**/artifacts/
+.release-work/
+.cache/
+tools/DiscordSocialSdk/runtime/
+
+# IDE and local tooling
+.vs/
+.idea/
+.freebuff/
+
+# Local probes and generated diagnostics
+.probe-*/
+*.log
+__pycache__/
+*.pyc
+
+# Local archives and temporary exports
+*.7z
+!tests/Steamy.Tests/Fixtures/*.7z
+Etmp*.txt
+
+# Backups and utility scripts
+backups/
+rename-to-steamy.bat
+
+# User-specific runtime data
+src/Steamy/Data/*.db
+src/Steamy/Data/*.db-*
+tools/ControllerHost/runtime/
+
+# Server secrets and SSH credentials never belong in source distributions.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_ed25519*
+id_rsa*
+**/secrets/
+
+# Downloaded optional-tool working cache.
+src/Steamy/Tools/Goldberg/current/
+
+# Private local relay implementation.
+src/Steamy.RelayClient/
+
+TestResults/
+**/TestResults/
+.vscode/
+
+# Native desktop preview remains local until full feature parity is verified.
+src/Steamy.Desktop/
+tests/Steamy.Desktop.Probe/
+Steamy.Desktop.slnx

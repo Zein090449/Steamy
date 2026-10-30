@@ -1,0 +1,479 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Steamy.ViewModels;
+
+namespace Steamy.Models;
+
+public enum SteamCatalogAppType
+{
+    Unknown,
+    Game,
+    Dlc,
+    Software,
+    Video,
+    Hardware,
+    Music
+}
+
+/// <summary>
+/// Public Steam catalog metadata. It is deliberately separate from <see cref="Game"/>, which
+/// represents an app installed in the user's local Steam library.
+/// </summary>
+public sealed class SteamCatalogItem : UiObservableObject
+{
+    private string _shortDescription = string.Empty;
+    private string _developersDisplay = string.Empty;
+    private string _publishersDisplay = string.Empty;
+    private string _releaseDate = string.Empty;
+    private string _priceLabel = "Price unavailable";
+    private string _genresDisplay = string.Empty;
+    private string _systemRequirements = "System requirements unavailable";
+    private string _storeUrl = string.Empty;
+    private string _detailStatus = "Details not loaded";
+    private bool _isFreeToPlay;
+    private bool _isDetailsLoading;
+    private bool _hasDetails;
+    private DateTimeOffset? _detailsUpdatedAt;
+    private bool _isArtworkLoading;
+    private bool _screenshotsLoaded;
+    private bool _isScreenshotsLoading;
+    private string _screenshotStatus = "Screenshots not loaded";
+    private WeakReference<System.Windows.Media.Imaging.BitmapImage>? _artworkImage;
+    private WeakReference<System.Windows.Media.Imaging.BitmapImage>? _headerImage;
+    private SteamCatalogAppType _appType;
+    private bool _isInstalled;
+
+    public bool IsUpcoming { get; set; }
+    public bool IsReleaseVerified { get; set; }
+    public string CardLabel => IsUpcoming ? "UPCOMING" : TypeLabel;
+    public int AppId { get; init; }
+    public string PlatformLabel => AppId > 0 ? "STEAM" : "PC";
+    public string Name { get; init; } = string.Empty;
+    public SteamCatalogAppType AppType
+    {
+        get => _appType;
+        set
+        {
+            if (SetProperty(ref _appType, value)) OnPropertyChanged(nameof(TypeLabel));
+        }
+    }
+
+    private bool _nsfw;
+
+    public bool Nsfw
+    {
+        get => _nsfw || Steamy.Services.GameClassification.IsNsfw(Name, GenresDisplay);
+        set => SetProperty(ref _nsfw, value);
+    }
+    // Public catalogs contain hundreds of thousands of entries. Generate CDN addresses
+    // only for entries whose artwork is actually requested; custom providers keep their URLs.
+    internal bool UseSteamArtworkDefaults { get; init; }
+    private string? _headerImageUrl, _capsuleImageUrl, _portraitImageUrl, _libraryImageUrl, _defaultPortraitUrl;
+    public string HeaderImageUrl { get => _headerImageUrl ??= SteamArtworkUrl("header.jpg"); set => _headerImageUrl = value; }
+    public string CapsuleImageUrl { get => _capsuleImageUrl ??= SteamArtworkUrl("capsule_616x353.jpg"); set => _capsuleImageUrl = value; }
+    public string PortraitImageUrl { get => _portraitImageUrl ??= DefaultPortraitUrl; set => _portraitImageUrl = value; }
+    public string LibraryImageUrl { get => _libraryImageUrl ??= DefaultPortraitUrl; set => _libraryImageUrl = value; }
+    private string DefaultPortraitUrl => _defaultPortraitUrl ??= SteamArtworkUrl("library_600x900.jpg");
+    private string SteamArtworkUrl(string file) => UseSteamArtworkDefaults
+        ? $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{AppId}/{file}" : string.Empty;
+    private ObservableCollection<SteamCatalogScreenshot>? _screenshots;
+    public ObservableCollection<SteamCatalogScreenshot> Screenshots
+    {
+        get
+        {
+            if (_screenshots is not null) return _screenshots;
+            _screenshots = new();
+            _screenshots.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasScreenshots));
+            return _screenshots;
+        }
+    }
+
+    public string TypeLabel => AppType switch
+    {
+        SteamCatalogAppType.Game => "Game",
+        SteamCatalogAppType.Dlc => "DLC",
+        SteamCatalogAppType.Software => "Software",
+        SteamCatalogAppType.Video => "Video",
+        SteamCatalogAppType.Hardware => "Hardware",
+        SteamCatalogAppType.Music => "Music",
+        _ => "Game"
+    };
+
+    public string AppLabel => $"App {AppId}";
+    public string ArtworkMonogram => string.Concat(Name.Split([' ', ':', '-', '™', '®'], StringSplitOptions.RemoveEmptyEntries)
+        .Where(word => char.IsLetterOrDigit(word[0])).Take(2).Select(word => char.ToUpperInvariant(word[0])));
+    public string InstallStateLabel => IsInstalled ? "Installed locally" : "Public catalog";
+    public bool IsInstalled
+    {
+        get => _isInstalled;
+        set
+        {
+            if (SetProperty(ref _isInstalled, value)) OnPropertyChanged(nameof(InstallStateLabel));
+        }
+    }
+
+    public string ShortDescription
+    {
+        get => _shortDescription;
+        set => SetProperty(ref _shortDescription, value);
+    }
+
+    public string DevelopersDisplay
+    {
+        get => _developersDisplay;
+        set => SetProperty(ref _developersDisplay, value);
+    }
+
+    public string PublishersDisplay
+    {
+        get => _publishersDisplay;
+        set => SetProperty(ref _publishersDisplay, value);
+    }
+
+    public string ReleaseDate
+    {
+        get => _releaseDate;
+        set => SetProperty(ref _releaseDate, value);
+    }
+
+    public string PriceLabel
+    {
+        get => _priceLabel;
+        set => SetProperty(ref _priceLabel, value);
+    }
+
+    private string _recommendationLabel = "";
+    public string RecommendationLabel { get => _recommendationLabel; set => SetProperty(ref _recommendationLabel, value); }
+    public string GenreLabel => string.IsNullOrWhiteSpace(GenresDisplay) || GenresDisplay.Contains("unavailable", StringComparison.OrdinalIgnoreCase) ? (IsInstalled ? "Installed on this PC" : TypeLabel) : GenresDisplay;
+
+    public string GenresDisplay
+    {
+        get => _genresDisplay;
+        set { if (SetProperty(ref _genresDisplay, value)) OnPropertyChanged(nameof(GenreLabel)); }
+    }
+
+    public string SystemRequirements
+    {
+        get => _systemRequirements;
+        set => SetProperty(ref _systemRequirements, value);
+    }
+
+    public string StoreUrl
+    {
+        get => _storeUrl;
+        set => SetProperty(ref _storeUrl, value);
+    }
+
+    public bool IsFreeToPlay
+    {
+        get => _isFreeToPlay;
+        set => SetProperty(ref _isFreeToPlay, value);
+    }
+
+    public bool IsDetailsLoading
+    {
+        get => _isDetailsLoading;
+        set => SetProperty(ref _isDetailsLoading, value);
+    }
+
+    public bool HasDetails
+    {
+        get => _hasDetails;
+        set => SetProperty(ref _hasDetails, value);
+    }
+
+    public DateTimeOffset? DetailsUpdatedAt
+    {
+        get => _detailsUpdatedAt;
+        set => SetProperty(ref _detailsUpdatedAt, value);
+    }
+
+    public string DetailStatus
+    {
+        get => _detailStatus;
+        set => SetProperty(ref _detailStatus, value);
+    }
+
+    public bool IsArtworkLoading
+    {
+        get => _isArtworkLoading;
+        set => SetProperty(ref _isArtworkLoading, value);
+    }
+
+    public bool ScreenshotsLoaded
+    {
+        get => _screenshotsLoaded;
+        set => SetProperty(ref _screenshotsLoaded, value);
+    }
+
+    public bool IsScreenshotsLoading
+    {
+        get => _isScreenshotsLoading;
+        set => SetProperty(ref _isScreenshotsLoading, value);
+    }
+
+    public string ScreenshotStatus
+    {
+        get => _screenshotStatus;
+        set => SetProperty(ref _screenshotStatus, value);
+    }
+
+    public bool HasScreenshots => _screenshots?.Count > 0;
+
+    public string ScreenshotCountLabel => Screenshots.Count == 0
+        ? "No screenshots"
+        : $"{Screenshots.Count} screenshot(s)";
+
+    public System.Windows.Media.Imaging.BitmapImage? ArtworkImage
+    {
+        get => _artworkImage is not null && _artworkImage.TryGetTarget(out var image) ? image : null;
+        set
+        {
+            if (ReferenceEquals(ArtworkImage, value)) return;
+            _artworkImage = value is null ? null : new(value); OnPropertyChanged(nameof(ArtworkImage)); OnPropertyChanged(nameof(IsArtworkFallback)); OnPropertyChanged(nameof(IsArtworkLandscape));
+        }
+    }
+
+    public System.Windows.Media.Imaging.BitmapImage? HeaderImage
+    {
+        get => _headerImage is not null && _headerImage.TryGetTarget(out var image) ? image : null;
+        set
+        {
+            if (ReferenceEquals(HeaderImage, value)) return;
+            _headerImage = value is null ? null : new(value); OnPropertyChanged(nameof(HeaderImage)); OnPropertyChanged(nameof(IsHeaderFallback));
+        }
+    }
+
+    public bool IsArtworkFallback => ArtworkImage is null;
+    public bool IsArtworkLandscape => ArtworkImage is { PixelHeight: > 0 } image && image.PixelWidth > image.PixelHeight * 1.1;
+    public bool IsHeaderFallback => HeaderImage is null;
+}
+
+public sealed class SteamCatalogScreenshot : ObservableObject
+{
+    private System.Windows.Media.Imaging.BitmapImage? _image;
+
+    public string ThumbnailUrl { get; init; } = string.Empty;
+    public string FullUrl { get; init; } = string.Empty;
+
+    public System.Windows.Media.Imaging.BitmapImage? Image
+    {
+        get => _image;
+        set
+        {
+            if (SetProperty(ref _image, value)) OnPropertyChanged(nameof(IsFallback));
+        }
+    }
+
+    public bool IsFallback => Image is null;
+}
+
+public sealed record SteamCatalogScreenshotInfo(string ThumbnailUrl, string FullUrl);
+
+public sealed record SteamCatalogSnapshot(
+    bool Succeeded,
+    IReadOnlyList<SteamCatalogItem> Items,
+    DateTimeOffset UpdatedAt,
+    bool FromCache,
+    string Message)
+{
+    public static SteamCatalogSnapshot Failure(string message) =>
+        new(false, Array.Empty<SteamCatalogItem>(), DateTimeOffset.MinValue, false, message);
+}
+
+public sealed record SteamCatalogDetails(
+    SteamCatalogAppType AppType,
+    string HeaderImageUrl,
+    string CapsuleImageUrl,
+    string PortraitImageUrl,
+    string LibraryImageUrl,
+    string ShortDescription,
+    IReadOnlyList<string> Developers,
+    IReadOnlyList<string> Publishers,
+    string ReleaseDate,
+    string PriceLabel,
+    bool IsFreeToPlay,
+    string GenresDisplay,
+    IReadOnlyList<SteamCatalogScreenshotInfo> Screenshots,
+    string SystemRequirements,
+    string StoreUrl,
+    bool? ComingSoon = null)
+{
+    public string DetailedDescription { get; init; } = "";
+    public string Languages { get; init; } = "";
+    public string Features { get; init; } = "";
+}
+
+public static class SteamCatalogQuery
+{
+    public static IReadOnlyList<SteamCatalogItem> FilterAndSort(
+        IEnumerable<SteamCatalogItem> items,
+        string? searchText,
+        string? typeFilter,
+        string? sortOption,
+        LibraryNsfwScope nsfwScope = LibraryNsfwScope.Hide,
+        CancellationToken cancellationToken = default,
+        bool includeUpcoming = false,
+        IReadOnlyDictionary<int, bool>? releaseStatus = null)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        var search = searchText?.Trim() ?? string.Empty;
+        var words = SearchTerms(search);
+        IEnumerable<SteamCatalogItem> query = items.Where(item =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var upcoming = releaseStatus is not null && releaseStatus.TryGetValue(item.AppId, out var knownUpcoming) ? knownUpcoming : item.IsUpcoming;
+            return (includeUpcoming || !upcoming) && (search.Length == 0 || MatchesSearch(item.Name, item.AppId, search, words));
+        });
+
+        if (nsfwScope == LibraryNsfwScope.Hide)
+            query = query.Where(item => !item.Nsfw);
+
+        query = typeFilter?.Trim() switch
+        {
+            "Game" or "Games" => query.Where(item => item.AppType == SteamCatalogAppType.Game || item.IsUpcoming),
+            "DLC" or "Dlc" => query.Where(item => item.AppType == SteamCatalogAppType.Dlc),
+            "Software" => query.Where(item => item.AppType == SteamCatalogAppType.Software),
+            "Video" => query.Where(item => item.AppType == SteamCatalogAppType.Video),
+            "Hardware" => query.Where(item => item.AppType == SteamCatalogAppType.Hardware),
+            "Music" => query.Where(item => item.AppType == SteamCatalogAppType.Music),
+            "Unknown" => query.Where(item => item.AppType == SteamCatalogAppType.Unknown),
+            _ => query
+        };
+
+        return sortOption?.Trim() switch
+        {
+            "Popular (AAA)" => query
+                .OrderByDescending(item => PopularityLookup.GetScore(item.AppId, item.Name))
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray(),
+            "App ID" => query.OrderByDescending(item => item.AppId).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray(),
+            "Type" => query.OrderBy(item => item.TypeLabel, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray(),
+            "Installed first" => query.OrderByDescending(item => item.IsInstalled).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray(),
+            "Name A–Z" => query.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ThenBy(item => item.AppId).ToArray(),
+            _ => query
+                .OrderByDescending(item => PopularityLookup.GetScore(item.AppId, item.Name))
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase).ToArray()
+        };
+    }
+    public static string[] SearchTerms(string search) => search.All(char.IsDigit)
+        ? Array.Empty<string>()
+        : search.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    public static bool MatchesSearch(string name, int appId, string search, string[]? words = null)
+    {
+        words ??= SearchTerms(search);
+        if (words.Length == 0) return name.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || appId.ToString(System.Globalization.CultureInfo.InvariantCulture).Contains(search, StringComparison.Ordinal);
+        foreach (var word in words)
+            if (System.Globalization.CultureInfo.InvariantCulture.CompareInfo.IndexOf(name, word,
+                System.Globalization.CompareOptions.IgnoreCase | System.Globalization.CompareOptions.IgnoreNonSpace) < 0) return false;
+        return true;
+    }
+
+}
+
+public static class PopularityLookup
+{
+    private static readonly Dictionary<int, int> Scores = new()
+    {
+        [1086940] = 98, // Baldur's Gate 3
+        [1245620] = 97, // Elden Ring
+        [1174180] = 96, // Red Dead Redemption 2
+        [1091500] = 95, // Cyberpunk 2077
+        [271590] = 94,  // Grand Theft Auto V
+        [814380] = 93,  // Sekiro
+        [1151640] = 92, // Horizon Zero Dawn
+        [1593500] = 91, // God of War
+        [1328670] = 90, // Mass Effect LE
+        [374320] = 89,  // Dark Souls III
+        [292030] = 88,  // The Witcher 3
+        [1938090] = 87, // CoD MW III
+        [1240440] = 86, // Halo Infinite
+        [1446780] = 85, // Monster Hunter Rise
+        [1817070] = 84, // Spider-Man Remastered
+        [1817190] = 83, // Spider-Man Miles Morales
+        [2050650] = 82, // Resident Evil 4
+        [2054970] = 81, // Dragon's Dogma 2
+        [1196590] = 81, // Resident Evil Village
+        [553850] = 80,  // Helldivers 2
+        [730] = 79,     // Counter-Strike 2
+        [1172470] = 78, // Apex Legends
+        [2358720] = 77, // Black Myth Wukong
+        [1222670] = 76, // The Sims 4
+        [570] = 75,     // Dota 2
+        [440] = 74,     // Team Fortress 2
+        [578080] = 73,  // PUBG
+        [252490] = 72,  // Rust
+        [346110] = 71,  // ARK
+        [1174370] = 70, // Star Wars Jedi
+    };
+
+    // Established series come before the long tail. This is catalog ordering, never availability.
+    private static readonly System.Text.RegularExpressions.Regex MajorSeries = new(
+        @"^(?:Assassin.s Creed|Avatar: Frontiers|Borderlands|Call of Duty|Crimson Desert|Death Stranding|Dead Space|Detroit: Become Human|Diablo|DOOM|Dragon.s Dogma|Dying Light|EA SPORTS|Fable|Fallout|Far Cry|FINAL FANTASY|Forza|Gears|Ghost of|God of War|Grand Theft Auto|HITMAN|Hogwarts Legacy|Horizon|Indiana Jones|Kingdom Come|Like a Dragon|Mafia|Marvel.s|METAL GEAR|Metro|Monster Hunter|Mortal Kombat|Need for Speed|NieR|Nioh|No Man.s Sky|PRAGMATA|Red Dead|Resident Evil|S.T.A.L.K.E.R.|Silent Hill|STAR WARS|Starfield|TEKKEN|The Elder Scrolls|The Last of Us|The Outer Worlds|The Witcher|Tom Clancy|UNCHARTED|Warhammer|Watch Dogs|Yakuza)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+    private static readonly System.Text.RegularExpressions.Regex Extras = new(
+        @"\b(?:demo|soundtrack|artbook|season pass|upgrade|DLC|pack|dedicated server|test|beta|benchmark)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+    public static int GetScore(int appId, string? name)
+    {
+        if (Scores.TryGetValue(appId, out var score)) return score;
+        return !string.IsNullOrWhiteSpace(name) && MajorSeries.IsMatch(name) && !Extras.IsMatch(name) ? 60 : GetScore(appId);
+    }
+    public static int GetScore(int appId)
+    {
+        if (Scores.TryGetValue(appId, out var score)) return score;
+        return appId switch
+        {
+            < 50_000 => 10,
+            < 200_000 => 9,
+            < 500_000 => 8,
+            < 1_000_000 => 7,
+            < 1_500_000 => 6,
+            < 2_000_000 => 5,
+            < 2_500_000 => 4,
+            < 3_000_000 => 3,
+            < 4_000_000 => 2,
+            < 5_000_000 => 1,
+            _ => 0
+        };
+    }
+}
+
+public static class SteamCatalogPaging
+{
+    public static int TotalPages(int itemCount, int pageSize)
+    {
+        if (itemCount <= 0 || pageSize <= 0) return 1;
+        return Math.Max(1, (int)Math.Ceiling(itemCount / (double)pageSize));
+    }
+
+    public static IReadOnlyList<T> Page<T>(IReadOnlyList<T> items, int page, int pageSize)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        if (pageSize <= 0) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        var safePage = Math.Clamp(page, 1, TotalPages(items.Count, pageSize));
+        return items.Skip((safePage - 1) * pageSize).Take(pageSize).ToArray();
+    }
+}
+
+/// <summary>One game in the fixes catalog (<c>fixes.json</c>) of the configured fixes source.</summary>
+public sealed class FixGame
+{
+    public string AppId { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public IReadOnlyList<FixEntry> Fixes { get; init; } = Array.Empty<FixEntry>();
+}
+
+public sealed class FixEntry
+{
+    public string LocalArchivePath { get; init; } = string.Empty;
+    public string Instructions { get; init; } = string.Empty;
+    /// <summary>Archive location relative to the source root, e.g. <c>fixes/449800/1.zip</c>.</summary>
+    public string Path { get; init; } = string.Empty;
+    public string Filename { get; init; } = string.Empty;
+    public string Size { get; init; } = string.Empty;
+    public IReadOnlyList<string> Badges { get; init; } = Array.Empty<string>();
+}

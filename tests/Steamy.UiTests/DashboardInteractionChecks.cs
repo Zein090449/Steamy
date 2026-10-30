@@ -1,0 +1,208 @@
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
+using System.Windows;
+using System.Windows.Controls;
+using Steamy.Models;
+using Steamy.Pages;
+using Steamy.Services;
+using Steamy.ViewModels;
+
+namespace Steamy.UiTests;
+
+public sealed partial class PageSmokeTests
+{
+    private static void CheckDashboardLayout(DashboardPage page)
+    {
+        var hero = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("DashboardHero"));
+        var artwork = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("SpotlightArtworkFrame"));
+        var title = Assert.IsType<TextBlock>(page.FindName("SpotlightTitle"));
+        var description = Assert.IsType<TextBlock>(page.FindName("SpotlightDescription"));
+        Assert.InRange(description.ActualWidth, 1, 360);
+        var actions = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("SpotlightActions"));
+        var paging = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("SpotlightPaging"));
+        var countdown = Assert.IsAssignableFrom<FrameworkElement>(page.FindName("SpotlightCountdown"));
+        Assert.Null(page.FindName("MajorGameGrid"));
+        Assert.NotNull(page.FindName("UpcomingGameGrid"));
+        var upcomingGrid = Descendants<Steamy.Controls.AdaptiveGridPanel>((ItemsControl)page.FindName("UpcomingGameGrid")).Single();
+        Assert.All(upcomingGrid.Children.Cast<FrameworkElement>(), child => Assert.InRange(child.ActualWidth, 210, page.ActualWidth));
+        Assert.Equal(215d / 460, upcomingGrid.CoverRatio, 10); // Preserve the restored Steam header aspect ratio.
+        Assert.Equal(52, upcomingGrid.FooterHeight);
+        var firstRow = upcomingGrid.Children.Cast<FrameworkElement>().Take(3).ToArray();
+        var strip = Descendants<Steamy.Controls.GameShortcutStrip>((ItemsControl)page.FindName("RecentlyOpenedStrip")).SingleOrDefault();
+        if (strip?.IsVisible == true && strip.Children.Count > 0)
+        {
+            var firstShortcut = (FrameworkElement)strip.Children[0];
+            Assert.InRange(firstShortcut.ActualWidth, 76, 96.5);
+            Assert.All(strip.Children.Cast<FrameworkElement>(), child =>
+                Assert.InRange(child.ActualWidth, firstShortcut.ActualWidth - 1, firstShortcut.ActualWidth + 1));
+            var lastShortcut = (FrameworkElement)strip.Children[strip.Children.Count - 1];
+            if (strip.Children.Count == 8)
+                Assert.InRange(lastShortcut.TranslatePoint(new Point(lastShortcut.ActualWidth, 0), strip).X, strip.ActualWidth - 1, strip.ActualWidth + 1);
+            Assert.InRange(firstShortcut.TranslatePoint(new Point(), page).X,
+                upcomingGrid.TranslatePoint(new Point(), page).X - 1, upcomingGrid.TranslatePoint(new Point(), page).X + 1);
+        }
+        Assert.All(firstRow, child => Assert.InRange(child.ActualWidth, firstRow[0].ActualWidth - 1, firstRow[0].ActualWidth + 1));
+        Assert.All(firstRow, child => Assert.Equal(firstRow[0].ActualHeight, child.ActualHeight));
+        Assert.All(upcomingGrid.Children.Cast<FrameworkElement>(), child => Assert.Null(Descendants<Button>(child).First().ToolTip)); // Cover cards stay quiet; trailer controls retain their accessible hints.
+        Assert.All(upcomingGrid.Children.Cast<FrameworkElement>(), child => Assert.True(child.ActualWidth > child.ActualHeight));
+        Assert.All(((DashboardViewModel)page.DataContext).NewGames, feature => Assert.True(feature.Metadata.ComingSoon));
+        Assert.Null(page.FindName("SpotlightPreviews")); // The countdown has no right-hand artwork rail.
+        if (Grid.GetRow(paging) == Grid.GetRow(actions))
+        {
+            var actionStart = actions.TranslatePoint(new Point(0,0), hero);
+            var pagingStart = paging.TranslatePoint(new Point(0,0), hero);
+            Assert.True(actionStart.X + actions.ActualWidth + 8 <= pagingStart.X,
+                "Spotlight actions and navigation must have separate space.");
+        }
+        var countdownStart = countdown.TranslatePoint(new Point(0,0), actions);
+        Assert.InRange(countdownStart.X, 0, 1);
+        Assert.InRange(countdownStart.Y, 0, 1);
+        if (((DashboardFeature)hero.DataContext).Metadata.ComingSoon)
+            Assert.True(countdown.ActualWidth >= 100 && countdown.ActualHeight >= 40);
+        else Assert.Equal(Visibility.Collapsed, countdown.Visibility);
+        Assert.Single(Descendants<Button>(actions));
+        Assert.InRange(hero.ActualHeight, 360, 520);
+        Assert.Equal(new Thickness(0), Assert.IsType<Border>(hero).BorderThickness);
+        Assert.True(artwork.ActualWidth > 0);
+        Assert.True(artwork.ActualHeight > 0);
+        Assert.False(string.IsNullOrWhiteSpace(title.Text));
+        foreach (var element in new[] { hero, artwork, title, actions, paging })
+        {
+            var start = element.TranslatePoint(new Point(0, 0), page);
+            Assert.True(start.X >= -1 && start.X + element.ActualWidth <= page.ActualWidth + 1,
+                $"{element.Name} extends beyond the dashboard at width {page.ActualWidth}.");
+        }
+        foreach (var button in Descendants<Button>(actions).Where(button => button.IsVisible))
+        {
+            Assert.True(button.ActualWidth >= 24 && button.ActualHeight >= 24);
+            var start = button.TranslatePoint(new Point(0, 0), hero);
+            Assert.True(start.X >= -1 && start.X + button.ActualWidth <= hero.ActualWidth + 1);
+            Assert.True(start.Y >= -1 && start.Y + button.ActualHeight <= hero.ActualHeight + 1,
+                $"Spotlight action is clipped at width {page.ActualWidth}.");
+        }
+        Assert.All(Descendants<Button>(paging), button =>
+            Assert.True(button.ActualWidth >= 24 && button.ActualHeight >= 24));
+    }
+
+    private static void CheckPersonalDashboard(IServiceProvider provider, MemoryActivityFixture activity)
+    {
+        var store = provider.GetRequiredService<IAppDataStore>();
+        var model = provider.GetRequiredService<DashboardViewModel>();
+        var installed = new Game { AppId = 42, Name = "An installed fixture", InstallState = GameInstallState.Installed };
+        store.Games.Add(installed);
+        try
+        {
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+            Assert.Contains(model.PersonalLibrary, entry => ReferenceEquals(entry.Game, installed));
+            Assert.Contains(model.InstalledGames, entry => ReferenceEquals(entry.Game, installed));
+            Assert.All(model.InstalledGames, entry => Assert.Equal(GameInstallState.Installed, entry.Game.InstallState));
+            Assert.False(model.HasContinueGame); // Installed does not mean it was opened or played.
+            var toggle = ((IAsyncRelayCommand)model.ToggleFavoriteCommand).ExecuteAsync(installed);
+            PumpUntil(() => toggle.IsCompleted);
+            toggle.GetAwaiter().GetResult();
+            Assert.Same(installed, Assert.Single(model.FavoriteGames).Game);
+            Assert.True(Assert.Single(model.PersonalLibrary).IsFavorite);
+            activity.RecordLaunchAsync(installed.AppId, DateTimeOffset.UtcNow.AddHours(-1)).GetAwaiter().GetResult();
+            refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+            Assert.True(model.HasContinueGame);
+            Assert.Same(installed, model.ContinueGame!.Game);
+            Assert.Contains("Opened in Steamy", Assert.Single(model.RecentlyOpenedGames).OpenedLabel);
+            toggle = ((IAsyncRelayCommand)model.ToggleFavoriteCommand).ExecuteAsync(installed);
+            PumpUntil(() => toggle.IsCompleted);
+            toggle.GetAwaiter().GetResult();
+            Assert.Empty(model.FavoriteGames);
+        }
+        finally
+        {
+            store.Games.Remove(installed);
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+        }
+        Assert.False(model.HasContinueGame); // A removed installation never remains a launch target.
+
+        var manyGames = Enumerable.Range(100, 15).Select(id => new Game
+        {
+            AppId = id, Name = $"Library fixture {id}", InstallState = GameInstallState.Installed,
+            IsLocalDownload = id == 100
+        }).ToArray();
+        try
+        {
+            foreach (var game in manyGames) store.Games.Add(game);
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+            Assert.Equal(15, model.AllInstalledGames.Count);
+            Assert.Equal(8, model.InstalledGames.Count);
+            model.ShowAllGamesCommand.Execute(null);
+            Assert.Equal(15, model.FilteredInstalledGames.Count);
+            model.InstalledSourceFilter = "DepotDownloader";
+            Assert.Equal(100, Assert.Single(model.FilteredInstalledGames).Game.AppId);
+            model.InstalledSearchText = "missing title";
+            Assert.False(model.HasInstalledResults);
+        }
+        finally
+        {
+            model.CloseInstalledLibraryCommand.Execute(null);
+            model.InstalledSearchText = "";
+            model.InstalledSourceFilter = "All games";
+            foreach (var game in manyGames) store.Games.Remove(game);
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+        }
+
+        var catalogFavorite = new Game { AppId = 10, Name = "A catalog-only fixture", InstallState = GameInstallState.NotInstalled };
+        var library = provider.GetRequiredService<LibraryViewModel>();
+        var previousSource = library.SelectedSourceFilter;
+        var previousSearch = library.SearchText;
+        var previousMode = library.SelectedMode;
+        try
+        {
+            var toggle = ((IAsyncRelayCommand)model.ToggleFavoriteCommand).ExecuteAsync(catalogFavorite);
+            PumpUntil(() => toggle.IsCompleted);
+            toggle.GetAwaiter().GetResult();
+            var favorite = Assert.Single(model.FavoriteGames);
+            Assert.Equal(10, favorite.Game.AppId);
+            Assert.Equal("An offline library game", favorite.Game.Name);
+            Assert.Equal(GameInstallState.NotInstalled, favorite.Game.InstallState);
+            Assert.True(favorite.IsFavorite);
+            Assert.DoesNotContain(store.Games, game => game.AppId == catalogFavorite.AppId);
+            Assert.Empty(model.PersonalLibrary);
+            Assert.False(model.HasContinueGame);
+            library.SearchText = string.Empty;
+            library.SelectedMode = "Browse all";
+            library.SelectedSourceFilter = "Favorites";
+            var catalogRefresh = ((IAsyncRelayCommand)library.RefreshCatalogCommand).ExecuteAsync(null);
+            PumpUntil(() => catalogRefresh.IsCompleted);
+            catalogRefresh.GetAwaiter().GetResult();
+            PumpUntil(() => library.PagedCatalogItems.Count == 1);
+            Assert.Equal(catalogFavorite.AppId, Assert.Single(library.PagedCatalogItems).AppId);
+
+            activity.RecordLaunchAsync(catalogFavorite.AppId).GetAwaiter().GetResult();
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+            Assert.False(model.HasContinueGame); // A saved catalog favorite cannot become an installed launch target.
+            Assert.Empty(model.RecentlyOpenedGames);
+        }
+        finally
+        {
+            if (activity.GetAsync().GetAwaiter().GetResult().FavoriteAppIds.Contains(catalogFavorite.AppId))
+                activity.ToggleFavoriteAsync(catalogFavorite.AppId).GetAwaiter().GetResult();
+            if (library.SelectedSourceFilter == "Favorites")
+                PumpUntil(() => library.PagedCatalogItems.Count == 0);
+            library.SelectedSourceFilter = previousSource;
+            library.SearchText = previousSearch;
+            library.SelectedMode = previousMode;
+            var refresh = model.RefreshActivityAsync();
+            PumpUntil(() => refresh.IsCompleted);
+            refresh.GetAwaiter().GetResult();
+        }
+        Assert.Empty(model.FavoriteGames);
+    }
+}

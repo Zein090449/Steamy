@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests for the platform-independent parts of Steamy (sharing, VDF parsing). The sources are
+       linked instead of referencing the WPF project, so the tests also run on Linux and macOS. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Steamy\Services\Update\UpdateService.cs" Link="Linked\UpdateService.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\GameActivityStore.cs" Link="Linked\GameActivityStore.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\GameSearchIndex.cs" Link="Linked\GameSearchIndex.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\SearchHistoryStore.cs" Link="Linked\SearchHistoryStore.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Diagnostics\BoundedLogBuffer.cs" Link="Linked\BoundedLogBuffer.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\SpotlightCatalog.cs" Link="Linked\SpotlightCatalog.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\GitHubManifestIndex.cs" Link="Linked\GitHubManifestIndex.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\ManifestArchiveReader.cs" Link="Linked\ManifestArchiveReader.cs" />
+    <Compile Include="..\..\src\Steamy\Models\DownloadJobState.cs" Link="Linked\DownloadJobState.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadTelemetry.cs" Link="Linked\DownloadTelemetry.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadPresentation.cs" Link="Linked\DownloadPresentation.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadJobPolicy.cs" Link="Linked\DownloadJobPolicy.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\LocalDownloadInspector.cs" Link="Linked\LocalDownloadInspector.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DepotResumeState.cs" Link="Linked\DepotResumeState.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadPreparation.cs" Link="Linked\DownloadPreparation.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\SteamDepotMetadataService.cs" Link="Linked\SteamDepotMetadataService.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadOperationRegistry.cs" Link="Linked\DownloadOperationRegistry.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadQueueScheduler.cs" Link="Linked\DownloadQueueScheduler.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadStorageGuard.cs" Link="Linked\DownloadStorageGuard.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\DownloadFailurePolicy.cs" Link="Linked\DownloadFailurePolicy.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\RyuuSecureDownloadService.cs" Link="Linked\RyuuSecureDownloadService.cs" />
+    <Reference Include="Steamy.RelayClient"><HintPath>..\..\lib\Steamy.RelayClient.dll</HintPath><Private>true</Private></Reference>
+    <Compile Include="..\..\src\Steamy\Services\Tools\GreenLumaDownloadDiscovery.cs" Link="Linked\GreenLumaDownloadDiscovery.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Download\BundledModCapabilities.cs" Link="Linked\BundledModCapabilities.cs" />
+    <Compile Include="..\..\src\Steamy.Core\Steam\VdfParser.cs" Link="Linked\VdfParser.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\ShareModels.cs" Link="Linked\ShareModels.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\ManifestLibraryScanner.cs" Link="Linked\ManifestLibraryScanner.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\AppListIndex.cs" Link="Linked\AppListIndex.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\ShareArchiveBuilder.cs" Link="Linked\ShareArchiveBuilder.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\GitHubBatchUploader.cs" Link="Linked\GitHubBatchUploader.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\ShareHistoryStore.cs" Link="Linked\ShareHistoryStore.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Sharing\OwnedGames.cs" Link="Linked\OwnedGames.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\SteamIdLookup.cs" Link="Linked\SteamIdLookup.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\ArchiveExtractor.cs" Link="Linked\ArchiveExtractor.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\GameRecommendationRanker.cs" Link="Linked\GameRecommendationRanker.cs" />
+    <Compile Include="..\..\src\Steamy\Storage\AppDataPaths.cs" Link="Linked\AppDataPaths.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\GameClassification.cs" Link="Linked\GameClassification.cs" />
+    <Compile Include="..\..\src\Steamy\Playtime\PlayTimeData.cs" Link="Linked\PlayTimeData.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\DownloadedInstallCatalog.cs" Link="Linked\DownloadedInstallCatalog.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\GamePreferencesStore.cs" Link="Linked\GamePreferencesStore.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Catalog\TrailerPreviewService.cs" Link="Linked\TrailerPreviewService.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\SteamPlayTimeReader.cs" Link="Linked\SteamPlayTimeReader.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Storage\PcGameScanner.cs" Link="Linked\PcGameScanner.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Steamy\Services\Catalog\ReleaseCountdown.cs" Link="Linked\ReleaseCountdown.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\SteamToolsMetadata.cs" Link="Linked\SteamToolsMetadata.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\SteamToolsFiles.cs" Link="Linked\SteamToolsFiles.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\SteamToolsBackend.cs" Link="Linked\SteamToolsBackend.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Steam\LocalManifestPackage.cs" Link="Linked\LocalManifestPackage.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>
