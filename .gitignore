@@ -5,7 +5,6 @@ publish/
 **/artifacts/
 .release-work/
 .cache/
-tools/DiscordSocialSdk/runtime/
 
 # IDE and local tooling
 .vs/

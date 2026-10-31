@@ -23,6 +23,7 @@ The components below retain their own licenses and distribution requirements.
 | [Microsoft.Web.WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2) 1.0.2792.45 | Microsoft | BSD-style (Microsoft WebView2 license) | embedded browser |
 | [Steamless](https://github.com/atom0s/Steamless) 3.1.0.5 | atom0s | CC BY-NC-ND 4.0 | `Tools/Steamless/`, shipped unmodified |
 | CreamAPI `steam_api.dll` / `steam_api64.dll` (via [CreamInstaller](https://github.com/FroggMaster/CreamInstaller)) | original authors | not stated; rights stay with the authors | embedded for the DLC Unlocker |
+| [Discord Social SDK](https://docs.discord.com/developers/discord-social-sdk) 1.10.19337 (Unity plugin), including Krisp noise-suppression models | Discord Inc.; Krisp | Discord Developer/Social SDK terms; bundled third-party notices in `licenses/0-License-Notices.txt` | `tools/DiscordSocialSdk/runtime/` (official C# bindings adapted for the WPF host), copied to `Tools/Discord/` |
 
 The Steamy DepotDownloaderMod fork adds bounded cancellable retries, safe manifest
 and target handling, resilient checkpoints, graceful host cancellation, shared
@@ -41,13 +42,12 @@ ViGEmBus and HidHide installers are fetched only after the user selects Install;
 SHA-256 and Windows Authenticode/publisher verification precede launching them.
 They retain Nefarius' original licenses and are not repackaged as Steamy drivers.
 
-## Downloaded or supplied by the user, not bundled
+Official builds include the Discord Social SDK runtime so the Friends tab is available out of the box.
+The binaries remain subject to Discord's Developer/Social SDK terms, and the SDK's open-source
+license notices ship in `Tools/Discord/licenses/`. Steamy's adapter and Friends UI are original
+application code.
 
-Discord-enabled custom builds may include the official [Discord Social SDK](https://docs.discord.com/developers/discord-social-sdk)
-and its generated C# bindings in `Tools/Discord/`, imported locally with `scripts/import-discord-sdk.ps1`.
-These remain subject to Discord's Developer/Social SDK terms; original package notices are copied into
-`Tools/Discord/licenses/`. The SDK binaries and sources are not included in this repository.
-The Steamy adapter and Friends UI are original application code.
+## Downloaded or supplied by the user, not bundled
 
 These are fetched on demand or selected by the user and keep their own licenses:
 [gbe_fork](https://github.com/Detanup01/gbe_fork) (Goldberg), [SmokeAPI](https://github.com/acidicoala/SmokeAPI),

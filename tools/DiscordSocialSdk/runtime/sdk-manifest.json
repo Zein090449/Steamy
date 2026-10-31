@@ -1,0 +1,7 @@
+﻿{
+    "bindingsSha256":  "166f99e89ba756bbc0dc5d854d1db51c3487e12f5683c13a12cbdfd3cf41c066",
+    "importedUtc":  "2026-10-30T15:43:37.8828813+00:00",
+    "hostAdaptation":  "WPF dispatcher pumping replaces Unity PlayerLoop; desktop JIT removes Mono AOT annotations; native free callback delegate is permanently rooted; exception diagnostics contain no raw SDK text.",
+    "source":  "Official Discord Social SDK Unity package, supplied locally by the developer",
+    "nativeSha256":  "5916273cfec117068a63c654ba6776af83bb93723fe88e63e048745ab23db012"
+}

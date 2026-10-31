@@ -3,6 +3,12 @@
 Each GitHub release uses the section of its version as its release notes.
 Add a new `## x.y.z` section at the top before tagging.
 
+## 0.8.2.1
+
+### Friends available in official builds
+
+- **Discord Social SDK included:** The Discord Social SDK runtime now ships with the repository and every official build, so the Friends and Community tabs are available out of the box instead of only in local custom builds.
+
 ## 0.8.2
 
 ### Discord Friends overhaul, GIF playback, and message editing
