@@ -64,6 +64,9 @@ public sealed partial class PageSmokeTests
         // Real view models, no downloader processes, network clients, database or user credentials.
         foreach (var type in services.Select(s => s.ServiceType).Where(t => t.IsInterface && t.IsVisible).Distinct().ToArray())
             services.AddSingleton(type, _ => OfflineServiceProxy.Create(type));
+        // The conversation store is a local JSON index, not an external operation; a real store keeps unread badges live in smoke runs.
+        // A per-run path keeps smoke runs from reading summaries left by earlier runs.
+    services.AddSingleton<IDiscordConversationStore>(new DiscordConversationStore(Path.Combine(Path.GetTempPath(), "steamy-ui-smoke-conversations-" + Guid.NewGuid().ToString("N") + ".json")));
         var store = new AppDataStore();
         services.AddSingleton<IWindowsControllers>(new NoWindowsControllers());
         store.Downloads.Add(new DownloadJob { GameName = "A game ready to continue", State = DownloadJobState.Paused, Progress = 42.5, Status = "Paused — existing files are retained", TargetFolder = "C:\\Games\\Example", DownloadMode = "DepotDownloaderMod (Ryuu)" });

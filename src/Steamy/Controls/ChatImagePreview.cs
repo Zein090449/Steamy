@@ -28,9 +28,10 @@ public sealed class ChatImagePreview : Border
     private static DispatcherTimer? _clock;
     internal bool IsPlaying => _playing;
     internal bool HasMedia => _media is not null;
+    private System.Windows.Controls.MediaElement? _video;
     public ChatImagePreview()
     {
-        Visibility = Visibility.Collapsed; CornerRadius = new(10); Height = 180; MinWidth = 180; MaxWidth = 360;
+        Visibility = Visibility.Collapsed; CornerRadius = new(10); Height = 200; MinWidth = 180; MaxWidth = 320;
         ClipToBounds = true; Margin = new(0, 8, 0, 4);
         Loaded += (_, _) => { Active.Add(this); EnsureClock(); Reset(); };
         Unloaded += (_, _) => { Active.Remove(this); Release(); if (Active.Count == 0) _clock?.Stop(); };
@@ -55,7 +56,8 @@ public sealed class ChatImagePreview : Border
             var visible = view.InViewport();
             if (visible) { view._offscreenTicks = 0; view.EnsureMedia(); }
             else if (view._media is null && view._request is not null || ++view._offscreenTicks > 12 && view._media is not null) { view.Release(); view._attempted = false; }
-            var shouldPlay = visible && !view._pausedByUser && view._media?.Animated == true && (MotionPreferences.AnimationsEnabled || view._manual) && playing < 4;
+            var shouldPlay = visible && !view._pausedByUser && view._media is { } media && (media.Animated || media.IsVideo)
+                && (MotionPreferences.AnimationsEnabled || view._manual) && playing < 4;
             if (shouldPlay) playing++;
             view.SetPlayback(shouldPlay);
         }
@@ -85,8 +87,8 @@ public sealed class ChatImagePreview : Border
     }
     private async void EnsureMedia()
     {
-        if (_attempted || !Uri.TryCreate(Url, UriKind.Absolute, out var uri) || !ChatMediaPolicy.IsImageUri(uri)) return;
-        _attempted = true; var request = _request = new CancellationTokenSource(); Child = Placeholder("Loading image…");
+        if (_attempted || !Uri.TryCreate(Url, UriKind.Absolute, out var uri) || !ChatMediaPolicy.IsMediaReference(uri)) return;
+        _attempted = true; var request = _request = new CancellationTokenSource(); Child = Placeholder("Loading media…");
         try
         {
             var media = await MediaLoader(uri, request.Token);
@@ -95,15 +97,33 @@ public sealed class ChatImagePreview : Border
             var surface = new Grid(); surface.Children.Add(image); Child = surface; Cursor = Cursors.Hand;
             var expand = ActionButton("↗", "Open media viewer", HorizontalAlignment.Right);
             if (!IsViewer) { expand.Click += (_, args) => { OpenViewer(); args.Handled = true; }; surface.Children.Add(expand); }
-            if (media.Animated)
+            if (media.IsVideo && media.VideoUrl is { } source)
+            {
+                _video = new System.Windows.Controls.MediaElement
+                {
+                    Source = source, LoadedBehavior = System.Windows.Controls.MediaState.Manual,
+                    UnloadedBehavior = System.Windows.Controls.MediaState.Close, IsMuted = true, Stretch = Stretch.Uniform,
+                    ScrubbingEnabled = false, Volume = 0
+                };
+                _video.MediaEnded += (_, _) => { if (_video is not null) { _video.Position = TimeSpan.Zero; _video.Play(); } };
+                _video.MediaFailed += (_, _) => { if (_video is not null) _video.Visibility = Visibility.Collapsed; };
+                surface.Children.Insert(0, _video);
+                image.Visibility = Visibility.Collapsed;
+                _play = ActionButton("Play", "Play or pause the clip", HorizontalAlignment.Left);
+                _play.Click += (_, args) => { _pausedByUser = _playing; _manual = !_playing; SetPlayback(_manual && InViewport()); args.Handled = true; };
+                surface.Children.Add(_play);
+            }
+            else if (media.Animated)
             {
                 _play = ActionButton("GIF · Play", "Play or pause GIF", HorizontalAlignment.Left);
                 _play.Click += (_, args) => { _pausedByUser = _playing; _manual = !_playing; SetPlayback(_manual && InViewport()); args.Handled = true; };
                 surface.Children.Add(_play);
-                AnimationBehavior.SetAutoStart(image, false); AnimationBehavior.SetCacheFramesInMemory(image, false);
+                // AutoStart avoids the library's ShowFirstFrame pause, which lands after our first Play call and freezes the loop.
+                AnimationBehavior.SetAutoStart(image, true); AnimationBehavior.SetCacheFramesInMemory(image, false);
                 AnimationBehavior.SetRepeatBehavior(image, System.Windows.Media.Animation.RepeatBehavior.Forever);
                 AnimationBehavior.AddLoadedHandler(image, AnimationLoaded);
                 AnimationBehavior.AddErrorHandler(image, AnimationFailed);
+                AnimationBehavior.AddAnimationCompletedHandler(image, AnimationCompleted);
                 _animation = new MemoryStream(media.Bytes, false); AnimationBehavior.SetSourceStream(image, _animation);
             }
             RefreshVisibleMedia();
@@ -119,12 +139,27 @@ public sealed class ChatImagePreview : Border
     }
     private void SetPlayback(bool play)
     {
+        if (_video is not null)
+        {
+            if (play && !_playing) { try { _video.Play(); } catch (InvalidOperationException) { } }
+            else if (!play && _playing) _video.Pause();
+            _playing = play;
+            if (_play is not null) _play.Content = _playing ? "Pause" : "Play";
+            return;
+        }
         if (_image is null || AnimationBehavior.GetAnimator(_image) is not { } animator) { _playing = false; return; }
-        if (play != _playing) { if (play) animator.Play(); else animator.Pause(); _playing = play; }
-        if (_play is not null) _play.Content = _playing ? "GIF · Pause" : "GIF · Play";
+        // Play/Pause are idempotent; repeating Play each tick also recovers a loop the library paused after we started it.
+        if (play) animator.Play(); else animator.Pause();
+        if (_playing != play) { _playing = play; if (_play is not null) _play.Content = _playing ? "GIF · Pause" : "GIF · Play"; }
     }
     private void AnimationLoaded(object sender, RoutedEventArgs args)
     { if (ReferenceEquals(sender, _image)) RefreshVisibleMedia(); }
+    private void AnimationCompleted(object sender, XamlAnimatedGif.AnimationCompletedEventArgs args)
+    {
+        if (!ReferenceEquals(sender, _image) || _image is null || !_playing) return;
+        // Some GIF files carry a finite repetition count; chat playback stays looping regardless.
+        AnimationBehavior.GetAnimator(_image)?.Play();
+    }
     private void AnimationFailed(object sender, AnimationErrorEventArgs args)
     {
         if (!ReferenceEquals(sender, _image) || _image is null) return;
@@ -135,10 +170,12 @@ public sealed class ChatImagePreview : Border
     {
         _request?.Cancel(); _request?.Dispose(); _request = null;
         var image = _image; _image = null; _media = null; _play = null; _playing = false;
+        if (_video is not null) { _video.Close(); _video = null; }
         if (image is not null)
         {
             AnimationBehavior.RemoveLoadedHandler(image, AnimationLoaded);
             AnimationBehavior.RemoveErrorHandler(image, AnimationFailed);
+            AnimationBehavior.RemoveAnimationCompletedHandler(image, AnimationCompleted);
             AnimationBehavior.GetAnimator(image)?.Pause(); AnimationBehavior.SetSourceStream(image, null!);
             image.Source = null;
         }
@@ -152,7 +189,28 @@ public sealed class ChatImagePreview : Border
         if (Url is null) return;
         var media = new ChatImagePreview { Url = Url, IsViewer = true, Height = double.NaN, MinWidth = 0, MaxWidth = double.PositiveInfinity, Margin = new(20) };
         var viewer = new Window { Title = "Media preview", Width = 900, Height = 650, MinWidth = 320, MinHeight = 240,
-            Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = media };
+            Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var chrome = new DockPanel();
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new(10, 8, 10, 0) };
+        if (Uri.TryCreate(Url, UriKind.Absolute, out var original) && ChatMediaPolicy.IsMediaReference(original))
+        {
+            var openOriginal = new System.Windows.Controls.Button
+            { Content = "Open original", Padding = new(10, 4, 10, 4), Cursor = Cursors.Hand, ToolTip = "Open the source in your browser" };
+            openOriginal.SetResourceReference(System.Windows.Controls.Button.BackgroundProperty, "SocialFieldBrush");
+            openOriginal.Click += (_, _) =>
+            {
+                try { using var opened = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(original.AbsoluteUri) { UseShellExecute = true }); }
+                catch (System.ComponentModel.Win32Exception) { }
+            };
+            actions.Children.Add(openOriginal);
+        }
+        var close = new System.Windows.Controls.Button { Content = "Close", Padding = new(10, 4, 10, 4), Margin = new(8, 0, 0, 0), Cursor = Cursors.Hand };
+        close.Click += (_, _) => viewer.Close();
+        actions.Children.Add(close);
+        DockPanel.SetDock(actions, Dock.Top);
+        chrome.Children.Add(actions);
+        chrome.Children.Add(media);
+        viewer.Content = chrome;
         viewer.SetResourceReference(Window.BackgroundProperty, "AppBackgroundBrush");
         viewer.KeyDown += (_, args) => { if (args.Key == Key.Escape) viewer.Close(); };
         viewer.Show();

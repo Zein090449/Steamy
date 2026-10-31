@@ -178,6 +178,8 @@ public sealed class JsonSettingsService : ISettingsService
             }
             catch { }
             settings ??= new AppSettings();
+            // Tenor needs no key. A keyless KLIPY/GIPHY selection from an older build could never search.
+            if (settings.GifProvider != "TENOR" && settings.GifApiKey.Trim().Length == 0) settings.GifProvider = "TENOR";
             // Adopt the requested white design once. Later theme selections remain user-owned.
             if (settings.AppearanceDesignVersion < 1)
             {

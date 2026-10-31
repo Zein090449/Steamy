@@ -45,7 +45,10 @@ public sealed class ImagePipeline : IImagePipeline, IDisposable
     private readonly Dictionary<string, Flight> _flights = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Transfer> _transfers = new(StringComparer.Ordinal);
     private readonly PriorityQueue<Flight, int> _queue = new();
-    private readonly SemaphoreSlim _signal = new(0), _decode = new(2), _network = new(4);
+    // Grids and GIF pickers fan out dozens of small images at once; four network
+    // slots made the last rows wait on the first. Eight stays polite to CDNs while
+    // letting a whole screen of covers land in roughly one round trip.
+    private readonly SemaphoreSlim _signal = new(0), _decode = new(4), _network = new(8);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, (long Bytes, long Access)> _diskFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _scannedDirectories = new(StringComparer.OrdinalIgnoreCase);
@@ -149,7 +152,9 @@ public sealed class ImagePipeline : IImagePipeline, IDisposable
     private void Enqueue(Flight flight)
     {
         _queue.Enqueue(flight, (int)flight.Priority); _signal.Release();
-        if (!_started) { _started = true; for (var i = 0; i < 4; i++) _ = Task.Run(WorkerAsync); }
+        // One worker per network slot: a whole visible page of tiles can download
+        // concurrently, and the decode gate still bounds CPU-resident decodes.
+        if (!_started) { _started = true; for (var i = 0; i < 8; i++) _ = Task.Run(WorkerAsync); }
     }
     private async Task ProbeCacheAsync(Flight flight)
     {
@@ -327,7 +332,10 @@ public sealed class ImagePipeline : IImagePipeline, IDisposable
                 await _network.WaitAsync(linked.Token).ConfigureAwait(false);
                 try
                 {
-                    using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, linked.Token).ConfigureAwait(false);
+                    // The shared handler keeps redirects off for Steam assets; GIF share pages
+                    // (tenor/imgur/giphy/klipy) answer with 301/302 before serving content,
+                    // so follow a bounded chain of https redirects here.
+                    using var response = await ImageRedirects.FollowAsync(_http, uri, linked.Token).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxDownloadBytes) { transfer.Completion.TrySetResult(null); return; }
                     await using var source = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
                     using var memory = new MemoryStream(); var buffer = new byte[16384]; int read;
@@ -471,5 +479,29 @@ public sealed class ImagePipeline : IImagePipeline, IDisposable
             _flights.Clear(); _cache.Clear(); _lru.Clear(); _pendingDiskTouches.Clear(); _bytes = 0;
         }
         if (_ownsHttp) _http.Dispose();
+    }
+}
+
+/// <summary>Bounded redirect following for endpoints that answer 301/302 before content (tenor, imgur, giphy share pages).</summary>
+internal static class ImageRedirects
+{
+    internal const int MaxHops = 4;
+    internal static Task<HttpResponseMessage> FollowAsync(HttpClient http, Uri uri, CancellationToken token) =>
+        FollowAsync(address => http.GetAsync(address, HttpCompletionOption.ResponseHeadersRead, token), uri, token);
+    internal static async Task<HttpResponseMessage> FollowAsync(Func<Uri, Task<HttpResponseMessage>> get, Uri uri, CancellationToken token)
+    {
+        var response = await get(uri).ConfigureAwait(false);
+        for (var hops = 0; (int)response.StatusCode is 301 or 302 or 303 or 307 or 308 && hops < MaxHops; hops++)
+        {
+            var location = response.Headers.Location;
+            if (location is null) return response;
+            var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+            // Steamy's handler keeps auto-redirects off; only chase https targets.
+            if (next.Scheme != "https") return response;
+            response.Dispose();
+            uri = next;
+            response = await get(next).ConfigureAwait(false);
+        }
+        return response;
     }
 }

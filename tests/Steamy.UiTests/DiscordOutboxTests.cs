@@ -9,7 +9,7 @@ public sealed partial class DiscordWorkspaceTests
     public async Task AnUnconfirmedSendCannotBeBlindlyRetriedAndAHistoryConfirmationDeduplicatesIt()
     {
         var service = new SocialFixture { SendError = new TimeoutException() };
-        using var model = new DiscordFriendsViewModel(service, new Settings());
+        using var model = new DiscordFriendsViewModel(service, new Settings(), conversations: TestStores.Isolated());
         model.SelectedFriend = model.Friends[0]; model.MessageDraft = "One message";
         await model.SendMessageCommand.ExecuteAsync(null);
         var failed = Assert.Single(model.Messages); Assert.False(failed.CanResend);
@@ -23,7 +23,7 @@ public sealed partial class DiscordWorkspaceTests
     public async Task ExplicitlyRejectedMessagesCanRetryWithoutLeavingDuplicateBubbles()
     {
         var service = new SocialFixture { SendError = new DiscordSendRejectedException("Privacy prevented delivery.") };
-        using var model = new DiscordFriendsViewModel(service, new Settings());
+        using var model = new DiscordFriendsViewModel(service, new Settings(), conversations: TestStores.Isolated());
         model.SelectedFriend = model.Friends[0]; model.MessageDraft = "Retry after privacy change";
         await model.SendMessageCommand.ExecuteAsync(null);
         var failed = Assert.Single(model.Messages); Assert.True(failed.CanResend);
@@ -35,8 +35,8 @@ public sealed partial class DiscordWorkspaceTests
     public async Task ASlowSendDoesNotDisableAnotherConversationAndItsConfirmationSurvivesSwitchingBack()
     {
         var service = new SocialFixture { SendCompletion = new() };
-        using var model = new DiscordFriendsViewModel(service, new Settings());
-        model.SelectedFriend = model.Friends[0]; model.MessageDraft = "Conversation two";
+        using var model = new DiscordFriendsViewModel(service, new Settings(), conversations: TestStores.Isolated());
+        model.SelectedFriend = model.Friends.First(friend => friend.Id == 2); model.MessageDraft = "Conversation two";
         var send = model.SendMessageCommand.ExecuteAsync(null);
         Assert.Equal(DiscordDeliveryState.Sending, Assert.Single(model.Messages).DeliveryState);
         model.SelectedFriend = model.Friends.First(friend => friend.Id == 3); model.MessageDraft = "Conversation three draft";

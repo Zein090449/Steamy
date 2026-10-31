@@ -7,7 +7,7 @@
                  xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
                  FontFamily="{DynamicResource SteamyFontFamily}"
                  UseLayoutRounding="True" SnapsToDevicePixels="True"
-                 TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType" TextOptions.TextHintingMode="Fixed"
+                 TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType" TextOptions.TextHintingMode="Fixed"
                  RenderOptions.ClearTypeHint="Enabled" RenderOptions.BitmapScalingMode="HighQuality"
                  Title="Steamy"
                  Height="900"
@@ -299,11 +299,12 @@
     <Button x:Name="NotificationBell" Grid.RowSpan="2" Panel.ZIndex="6" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,180,0" Width="36" Height="36" MinHeight="36" Padding="0" Click="Notifications_Click" Style="{StaticResource NotificationBellButton}" ToolTip="{Binding Tooltip}" AutomationProperties.Name="Notifications" shell:WindowChrome.IsHitTestVisibleInChrome="True">
       <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
         <ui:SymbolIcon Symbol="Alert24" FontSize="17" HorizontalAlignment="Center" VerticalAlignment="Center" />
-        <Border Background="{DynamicResource SocialActionBrush}" CornerRadius="7" MinWidth="14" Height="14" Padding="3,0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-6,0" Visibility="{Binding BadgeVisibility}">
-          <TextBlock Text="{Binding BadgeLabel}" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource SocialOwnTextBrush}" TextAlignment="Center" />
+        <Border Background="#b3262a" BorderBrush="#f23f43" BorderThickness="1" CornerRadius="7" MinWidth="14" Height="14" Padding="3,0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-6,0" Visibility="{Binding BadgeVisibility}">
+          <TextBlock Text="{Binding BadgeLabel}" FontSize="9" FontWeight="SemiBold" Foreground="White" TextAlignment="Center" />
         </Border>
       </Grid>
     </Button>
+    <Canvas x:Name="ConfettiLayer" Grid.RowSpan="2" Panel.ZIndex="7" IsHitTestVisible="False" />
     <Popup x:Name="NotificationsPopup" PlacementTarget="{Binding ElementName=NotificationBell}" Placement="Bottom" VerticalOffset="10" StaysOpen="False" AllowsTransparency="True">
       <Border x:Name="NotificationCenterBorder" Width="400" MaxHeight="540" CornerRadius="18" Background="{DynamicResource SocialNotificationBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" controls:RoundedClip.Radius="18"><controls:NotificationCenterPanel x:Name="NotificationPanel" /></Border>
     </Popup>

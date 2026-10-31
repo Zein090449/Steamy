@@ -33,8 +33,8 @@
   </Style>
   <Style TargetType="TextBlock">
     <Setter Property="FontFamily" Value="{DynamicResource SteamyFontFamily}" />
-    <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
-    <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
+    <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
     <Setter Property="RenderOptions.ClearTypeHint" Value="Auto" />
     <Setter Property="UseLayoutRounding" Value="True" />
@@ -42,8 +42,8 @@
   </Style>
   <Style TargetType="Control">
     <Setter Property="FontFamily" Value="{DynamicResource SteamyFontFamily}" />
-    <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
-    <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale" />
+    <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+    <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
     <Setter Property="TextOptions.TextHintingMode" Value="Fixed" />
     <Setter Property="RenderOptions.ClearTypeHint" Value="Auto" />
     <Setter Property="UseLayoutRounding" Value="True" />

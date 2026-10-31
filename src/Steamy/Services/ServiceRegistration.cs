@@ -39,6 +39,7 @@ public static class ServiceRegistration
         services.AddSingleton<IDiscordSocialService, DiscordSocialService>();
         services.AddSingleton<ICommunityInviteService, CommunityInviteService>();
         services.AddSingleton<CommunityViewModel>();
+        services.AddSingleton<IDiscordConversationStore, DiscordConversationStore>();
         services.AddSingleton<DiscordFriendsViewModel>();
         services.AddSingleton<DiscordVoiceViewModel>();
         services.AddSingleton<IGifSearchService, GifSearchService>();

@@ -162,7 +162,9 @@ public sealed class SteamArtworkService : IArtworkService, IDisposable
 
     public async Task LoadHeadersAsync(IEnumerable<Game> games, CancellationToken cancellationToken = default)
     {
-        using var gate = new SemaphoreSlim(4);
+        // Match the shared pipeline's network width so a visible wall of cards
+        // finishes in one wave instead of queues behind four slow requests.
+        using var gate = new SemaphoreSlim(8);
         await Task.WhenAll(games.Where(game => game.AppId > 0).Select(async game =>
         {
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -187,7 +189,7 @@ public sealed class SteamArtworkService : IArtworkService, IDisposable
         var selectedGames = games.Where(game => game.AppId > 0).ToArray();
         if (selectedGames.Length == 0) return;
 
-        using var gate = new SemaphoreSlim(4);
+        using var gate = new SemaphoreSlim(8);
         await Task.WhenAll(selectedGames.Select(async game =>
         {
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -240,10 +242,12 @@ public sealed class SteamArtworkService : IArtworkService, IDisposable
 
             var portraitUrls = new[]
             {
-                $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/library_600x900_2x.jpg",
-                $"https://cdn.akamai.steamstatic.com/steam/apps/{game.AppId}/library_600x900_2x.jpg",
+                // Library tiles decode at 360 px; the standard asset is a fraction of
+                // the 2x size, so it paints sooner and still exceeds the decode target.
                 $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/library_600x900.jpg",
                 $"https://cdn.akamai.steamstatic.com/steam/apps/{game.AppId}/library_600x900.jpg",
+                $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/library_600x900_2x.jpg",
+                $"https://cdn.akamai.steamstatic.com/steam/apps/{game.AppId}/library_600x900_2x.jpg",
                 $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/capsule_616x353.jpg",
                 $"https://cdn.akamai.steamstatic.com/steam/apps/{game.AppId}/capsule_616x353.jpg",
             };

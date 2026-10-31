@@ -16,9 +16,24 @@ public sealed class GifPickerViewModel : ObservableObject, IDisposable
     private bool _busy, _favorites, _open, _more;
     private int _page, _generation;
     public ObservableCollection<GifItem> Items { get; } = [];
-    public string[] Providers { get; } = ["KLIPY", "GIPHY"];
-    public string Provider { get => _settings.GifProvider; set { if (value == Provider || value is not ("KLIPY" or "GIPHY")) return; _settings.GifProvider = value; _settings.GifApiKey = ""; ApiKey = ""; _ = SaveAndReloadAsync(); OnPropertyChanged(); OnPropertyChanged(nameof(SearchPlaceholder)); OnPropertyChanged(nameof(Attribution)); } }
-    public string SearchPlaceholder => "Search " + _service.Provider;
+    public string[] Providers { get; } = ["TENOR", "KLIPY", "GIPHY"];
+    public string Provider
+    {
+        get => _settings.GifProvider is "KLIPY" or "GIPHY" ? _settings.GifProvider : "TENOR";
+        set
+        {
+            if (value is not ("TENOR" or "KLIPY" or "GIPHY") || value == Provider) return;
+            _settings.GifProvider = value;
+            // Keep the saved app key: silently discarding it forced keyless providers
+            // and made switching back require pasting the same key again.
+            _ = SaveAndReloadAsync();
+            OnPropertyChanged(); OnPropertyChanged(nameof(SearchPlaceholder)); OnPropertyChanged(nameof(Attribution));
+            OnPropertyChanged(nameof(NeedsKey)); OnPropertyChanged(nameof(Keyless));
+        }
+    }
+    public bool NeedsKey => Provider != "TENOR";
+    public bool Keyless => !NeedsKey;
+    public string SearchPlaceholder => "Search " + Provider;
     public string Attribution => "Powered by " + _service.Provider;
     public string Query { get => _query; set { if (SetProperty(ref _query, value) && _open) _ = LoadAsync(false, true); } }
     public string Status { get => _status; private set => SetProperty(ref _status, value); }
@@ -53,7 +68,8 @@ public sealed class GifPickerViewModel : ObservableObject, IDisposable
         });
         OpenProviderCommand = new RelayCommand(() =>
         {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_service.Provider == "KLIPY" ? "https://klipy.com/" : "https://giphy.com/") { UseShellExecute = true }); }
+            var site = _service.Provider switch { "TENOR" => "https://tenor.com/", "KLIPY" => "https://klipy.com/", _ => "https://giphy.com/" };
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(site) { UseShellExecute = true }); }
             catch (Exception) { Status = "Couldn't open the GIF website."; }
         });
     }
@@ -71,7 +87,7 @@ public sealed class GifPickerViewModel : ObservableObject, IDisposable
         if (!append) Items.Clear(); Busy = true; _more = false;
         try
         {
-            if (!_service.IsConfigured) { Status = $"Paste a direct GIF link, or add a {_service.Provider} app key to search here."; return; }
+            if (!_service.IsConfigured) { Status = $"Paste a GIF link to send it right away, or add a free {_service.Provider} app key below to search here (\"Open GIF website\" gets you one)."; return; }
             if (debounce) await Task.Delay(300, request.Token);
             Status = "Loading GIFs…";
             var prefix = _service.Provider + ":";

@@ -27,6 +27,7 @@ public partial class FriendsPage : Page
     internal FriendsPage(DiscordFriendsViewModel model, bool docked = false)
     {
         InitializeComponent(); DataContext = model;
+        QuickSwitcherBox.TextChanged += (_, _) => FilterQuickSwitcher();
         InitializeDock(docked);
         SizeChanged += (_, _) =>
         {
@@ -35,13 +36,13 @@ public partial class FriendsPage : Page
             SocialWorkspace.ColumnDefinitions[0].Width = new GridLength(contacts);
             PartyColumn.Width = PartyGap.Width = new GridLength(0);
             PartyPane.Visibility = Visibility.Collapsed;
-            CompactPartyButton.Visibility = Visibility.Visible;
             Resources["SocialMessageMaxWidth"] = Math.Clamp((ActualWidth - contacts - 80) * .72, 260, 600);
         };
         Loaded += (_, _) =>
         {
             UpdateChatExposure(); model.Messages.CollectionChanged += MessagesChanged; model.PropertyChanged += ConversationChanged; model.ConversationChanging += BeforeConversationChanges;
             ((GifPickerViewModel)ConversationGifPicker.DataContext).Picked += GifPicked;
+            ConversationEmojiPicker.Picked += EmojiPicked;
             ChatMessages.ApplyTemplate(); _messageScroll = FindScroll(ChatMessages);
             if (_messageScroll is not null)
             {
@@ -57,7 +58,8 @@ public partial class FriendsPage : Page
             SaveReadPosition(model); _restoreGeneration++; _restorePending = false;
             model.SetChatVisible(false); model.Messages.CollectionChanged -= MessagesChanged; model.PropertyChanged -= ConversationChanged; model.ConversationChanging -= BeforeConversationChanges;
             ((GifPickerViewModel)ConversationGifPicker.DataContext).Picked -= GifPicked;
-            GifPickerPopup.IsOpen = false;
+            ConversationEmojiPicker.Picked -= EmojiPicked;
+            GifPickerPopup.IsOpen = false; EmojiPickerPopup.IsOpen = false; ProfilePopup.IsOpen = false; QuickSwitcherPopup.IsOpen = false;
             if (_messageScroll is not null)
             {
                 _messageScroll.ScrollChanged -= ChatScrolled;
@@ -171,16 +173,112 @@ public partial class FriendsPage : Page
     }
     private void Composer_PreviewKeyDown(object sender, KeyEventArgs args)
     {
+        if (args.Key == Key.Escape && DataContext is DiscordFriendsViewModel { IsEditing: true } editing)
+        { editing.CancelMessageEditCommand.Execute(null); args.Handled = true; return; }
         if (args.Key != Key.Enter || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
         if (DataContext is DiscordFriendsViewModel model && model.SendMessageCommand.CanExecute(null)) model.SendMessageCommand.Execute(null);
         args.Handled = true;
     }
+    private void EditMessage_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: DiscordChatMessage message } || DataContext is not DiscordFriendsViewModel model) return;
+        model.BeginEditMessageCommand.Execute(message);
+        Dispatcher.BeginInvoke(() => { MessageComposer.Focus(); MessageComposer.CaretIndex = MessageComposer.Text.Length; });
+    }
+    private void DeleteMessage_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: DiscordChatMessage message } || DataContext is not DiscordFriendsViewModel model) return;
+        var answer = MessageBox.Show(Window.GetWindow(this), "Delete this message for everyone?", "Delete message",
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (answer == MessageBoxResult.Yes) _ = model.DeleteMessageCommand.ExecuteAsync(message);
+    }
+    private void CancelMessageEdit_Click(object sender, RoutedEventArgs args)
+    {
+        (DataContext as DiscordFriendsViewModel)?.CancelMessageEditCommand.Execute(null);
+        MessageComposer.Focus();
+        MessageComposer.CaretIndex = MessageComposer.Text.Length;
+    }
     private void CompactParty_Click(object sender, RoutedEventArgs args)
     { if (sender is UIElement target) CompactPartyPopup.PlacementTarget = target; CompactPartyPopup.IsOpen = !CompactPartyPopup.IsOpen; }
     private void GifPicker_Click(object sender, RoutedEventArgs args) => GifPickerPopup.IsOpen = !GifPickerPopup.IsOpen;
+    private void EmojiPicker_Click(object sender, RoutedEventArgs args)
+    {
+        if (DataContext is DiscordFriendsViewModel model) ConversationEmojiPicker.Recents = model.RecentEmojis;
+        EmojiPickerPopup.IsOpen = !EmojiPickerPopup.IsOpen;
+    }
+    private void EmojiPicked(object? sender, string emoji)
+    {
+        if (DataContext is not DiscordFriendsViewModel model || emoji.Length == 0) return;
+        var draft = model.MessageDraft;
+        if (draft.Length + emoji.Length > 2000) return;
+        var insertAt = Math.Clamp(MessageComposer.CaretIndex, 0, draft.Length);
+        model.MessageDraft = draft[..insertAt] + emoji + draft[insertAt..];
+        MessageComposer.CaretIndex = insertAt + emoji.Length;
+        MessageComposer.Focus();
+        model.RememberEmoji(emoji);
+        ConversationEmojiPicker.Recents = model.RecentEmojis;
+    }
+    private void ProfilePanel_Click(object sender, RoutedEventArgs args)
+    {
+        if (DataContext is not DiscordFriendsViewModel model || model.SelectedFriend is null) { ProfilePopup.IsOpen = false; return; }
+        ProfilePopup.IsOpen = !ProfilePopup.IsOpen;
+    }
+    private void ProfileMessage_Click(object sender, RoutedEventArgs args)
+    {
+        ProfilePopup.IsOpen = false;
+        MessageComposer.Focus();
+        MessageComposer.CaretIndex = (DataContext as DiscordFriendsViewModel)?.MessageDraft.Length ?? 0;
+    }
+    private void CopyRowMessage_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { CommandParameter: string text } || text.Length == 0) return;
+        try { Clipboard.SetText(text); }
+        catch (System.Runtime.InteropServices.ExternalException) { MessageBox.Show(Window.GetWindow(this), "The clipboard is busy. Try copying again.", "Copy message", MessageBoxButton.OK, MessageBoxImage.Information); }
+    }
+    protected override void OnPreviewKeyDown(KeyEventArgs args)
+    {
+        base.OnPreviewKeyDown(args);
+        if (args.Key == Key.K && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            if (!QuickSwitcherPopup.IsOpen) OpenQuickSwitcher();
+            args.Handled = true;
+        }
+        else if (args.Key == Key.Escape && QuickSwitcherPopup.IsOpen) { QuickSwitcherPopup.IsOpen = false; args.Handled = true; }
+    }
+    private void OpenQuickSwitcher()
+    {
+        if (DataContext is not DiscordFriendsViewModel model) return;
+        QuickSwitcherBox.Text = "";
+        QuickSwitcherList.ItemsSource = model.Friends;
+        QuickSwitcherPopup.IsOpen = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() => { QuickSwitcherBox.Focus(); QuickSwitcherBox.SelectAll(); }));
+    }
+    private void FilterQuickSwitcher()
+    {
+        if (DataContext is not DiscordFriendsViewModel model) return;
+        var query = QuickSwitcherBox.Text.Trim();
+        QuickSwitcherList.ItemsSource = query.Length == 0 ? model.Friends
+            : model.Friends.Where(friend => friend.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+                || friend.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || friend.Id.ToString().Contains(query, StringComparison.Ordinal)).ToArray();
+        if (QuickSwitcherList.Items.Count > 0) QuickSwitcherList.SelectedIndex = 0;
+    }
+    private void QuickSwitcherPick()
+    {
+        if (DataContext is DiscordFriendsViewModel model && QuickSwitcherList.SelectedItem is DiscordFriend friend) model.SelectedFriend = friend;
+        QuickSwitcherPopup.IsOpen = false;
+    }
+    private void QuickSwitcherList_KeyDown(object sender, KeyEventArgs args)
+    {
+        if (args.Key == Key.Enter) { QuickSwitcherPick(); args.Handled = true; }
+        else if (args.Key == Key.Escape) { QuickSwitcherPopup.IsOpen = false; args.Handled = true; }
+    }
+    private void QuickSwitcherList_DoubleClick(object sender, MouseButtonEventArgs args) => QuickSwitcherPick();
     internal bool CloseTransientPanels()
     {
+        if (QuickSwitcherPopup.IsOpen) { QuickSwitcherPopup.IsOpen = false; return true; }
+        if (EmojiPickerPopup.IsOpen) { EmojiPickerPopup.IsOpen = false; return true; }
         if (GifPickerPopup.IsOpen) { GifPickerPopup.IsOpen = false; return true; }
+        if (ProfilePopup.IsOpen) { ProfilePopup.IsOpen = false; return true; }
         if (CompactPartyPopup.IsOpen) { CompactPartyPopup.IsOpen = false; return true; }
         return false;
     }
@@ -207,6 +305,7 @@ public partial class FriendsPage : Page
         if (DataContext is not DiscordFriendsViewModel model || sender is not FrameworkElement button) return;
         var menu = new ContextMenu();
         menu.Items.Add(new MenuItem { Header = "Reload conversation", Command = model.ReloadChatCommand });
+        if (model.Party is not null) menu.Items.Add(new MenuItem { Header = "Leave party", Command = model.LeavePartyCommand });
         if (model.SelectedFriend is { } friend)
         {
             menu.Items.Add(new MenuItem { Header = "Open in Discord", Command = model.OpenDiscordMessageCommand, CommandParameter = model.Messages.LastOrDefault() });
@@ -222,6 +321,10 @@ public partial class FriendsPage : Page
         try { Clipboard.SetText(text); }
         catch (System.Runtime.InteropServices.ExternalException) { MessageBox.Show(Window.GetWindow(this), "The clipboard is busy. Try copying again.", "Copy message", MessageBoxButton.OK, MessageBoxImage.Information); }
     }
+    private void OnlineFriendChip_Click(object sender, RoutedEventArgs args)
+    {
+        if (sender is System.Windows.Controls.Button { DataContext: DiscordFriend friend } && DataContext is DiscordFriendsViewModel model) model.SelectedFriend = friend;
+    }
 }
 
 public sealed class SocialFilterConverter : IValueConverter
@@ -231,7 +334,7 @@ public sealed class SocialFilterConverter : IValueConverter
 }
 public sealed class SocialDayConverter : IValueConverter
 {
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is DateTime day ? day.Date == DateTime.Today ? "Today" : day.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : day.ToString("d MMM yyyy", culture) : "";
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is DateTime day ? Services.SocialTime.Day(day) : "";
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
 }
 public sealed class SocialUnreadConverter : IMultiValueConverter
@@ -239,4 +342,72 @@ public sealed class SocialUnreadConverter : IMultiValueConverter
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     { var count = values.Length >= 2 && values[0] is ulong id && values[1] is DiscordFriendsViewModel model ? model.UnreadMessages(id) : 0; return count == 0 ? "" : count > 99 ? "99+" : count.ToString(); }
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialFilterCountConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        var filter = values.Length > 0 ? values[0]?.ToString() ?? "" : "";
+        var count = values.Length > 1 && values[1] is DiscordFriendsViewModel model ? model.FilterCount(filter) : 0;
+        return count > 0 ? $"{filter} {count}" : filter;
+    }
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialConversationPreviewConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 4 || values[0] is not ulong id || values[1] is not DiscordFriendsViewModel model) return "";
+        var entry = model.Conversation(id);
+        // Summaries carry only the last message ID, so a synced conversation without a local
+        // preview falls back to the friend's detail line instead of showing an empty row.
+        if (entry is null || entry.LastMessageId == 0 || entry.Preview.Length == 0) return values[3] as string ?? "";
+        return (entry.FromMe ? "You: " : "") + entry.Preview;
+    }
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialConversationTimeConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 2 || values[0] is not ulong id || values[1] is not DiscordFriendsViewModel model) return "";
+        var entry = model.Conversation(id);
+        return entry is null || entry.LastMessageAt <= 0 ? "" : Services.SocialTime.Relative(DateTimeOffset.FromUnixTimeMilliseconds(entry.LastMessageAt));
+    }
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialUnreadWeightConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        var unread = values.Length >= 2 && values[0] is ulong id && values[1] is DiscordFriendsViewModel model ? model.UnreadMessages(id) : 0;
+        return unread > 0 ? FontWeights.SemiBold : FontWeights.Normal;
+    }
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialEqualToVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture) => values.Length >= 2 && Equals(values[0], values[1]) ? Visibility.Visible : Visibility.Collapsed;
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => targetTypes.Select(_ => Binding.DoNothing).ToArray();
+}
+public sealed class SocialMemberSinceConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is ulong id && id > 0 ? Services.SocialTime.MemberSince(id) : "";
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
+}
+public sealed class SocialPresenceColorConverter : IValueConverter
+{
+    private static readonly Brush Online = Frozen(0x23, 0xa5, 0x5a), Idle = Frozen(0xf0, 0xb2, 0x32), Dnd = Frozen(0xf2, 0x3f, 0x43), Streaming = Frozen(0x59, 0x36, 0x95), Offline = Frozen(0x80, 0x84, 0x8e);
+    private static SolidColorBrush Frozen(byte r, byte g, byte b) { var brush = new SolidColorBrush(Color.FromRgb(r, g, b)); brush.Freeze(); return brush; }
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is Services.DiscordPresence presence ? presence switch
+    {
+        Services.DiscordPresence.Online => Online, Services.DiscordPresence.Idle => Idle, Services.DiscordPresence.Dnd => Dnd,
+        Services.DiscordPresence.Streaming => Streaming, _ => Offline
+    } : Offline;
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
+}
+public sealed class SocialInverseBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value is true ? Visibility.Collapsed : Visibility.Visible;
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
 }

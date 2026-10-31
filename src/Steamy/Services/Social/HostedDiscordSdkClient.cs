@@ -56,7 +56,10 @@ internal sealed class HostedDiscordSdkClient : IDiscordSocialClient, IDiscordCom
     public Task SendFriendRequestAsync(string usernameOrId, CancellationToken token) => CallAsync((client, ct) => client.SendFriendRequestAsync(usernameOrId, ct), token);
     public Task UpdateFriendAsync(ulong id, DiscordFriendAction action, CancellationToken token) => CallAsync((client, ct) => client.UpdateFriendAsync(id, action, ct), token);
     public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token) => CallAsync((client, ct) => client.GetMessagesAsync(peerId, party, ct), token);
+    public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token) => CallAsync((client, ct) => client.GetMessageSummariesAsync(ct), token);
     public Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token) => CallAsync((client, ct) => client.SendMessageAsync(peerId, party, content, ct), token);
+    public Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token) => CallAsync((client, ct) => client.EditMessageAsync(peerId, messageId, content, ct), token);
+    public Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token) => CallAsync((client, ct) => client.DeleteMessageAsync(peerId, messageId, ct), token);
     public Task<DiscordChatMessage> SendWithNonceAsync(ulong peerId, bool party, string content, string nonce, CancellationToken token = default) => CallAsync((client, ct) => client.SendWithNonceAsync(peerId, party, content, nonce, ct), token);
     public Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token) => CallAsync((client, ct) => client.CreatePartyAsync(game, ct), token);
     public Task JoinPartyCodeAsync(string code, CancellationToken token = default) => CallAsync((client, ct) => client.JoinPartyCodeAsync(code, ct), token);
@@ -71,6 +74,12 @@ internal sealed class HostedDiscordSdkClient : IDiscordSocialClient, IDiscordCom
     public Task AcceptPartyInviteAsync(Guid id, CancellationToken token) => CallAsync((client, ct) => client.AcceptPartyInviteAsync(id, ct), token);
     public Task LeavePartyAsync(CancellationToken token) => CallAsync((client, ct) => client.LeavePartyAsync(ct), token);
     public Task OpenMessageAsync(ulong id, CancellationToken token = default) => CallAsync((client, ct) => client.OpenMessageAsync(id, ct), token);
+    public DiscordProfile? GetUser(ulong userId)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || !_native.IsCompletedSuccessfully) return null;
+        try { return _host.InvokeAsync(() => _native.Result.GetUser(userId)).WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult(); }
+        catch { return null; }
+    }
     public void DismissPartyInvite(Guid id) => Queue(client => client.DismissPartyInvite(id));
     public void SetShowingChat(bool showing) => Queue(client => client.SetShowingChat(showing));
     private async void Queue(Action<DiscordSdkClient> operation)

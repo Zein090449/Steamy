@@ -23,6 +23,9 @@ public sealed partial class DiscordFriendsViewModel
     private bool _chatLoading;
     private bool _showAddFriend;
     private bool _chatVisible;
+    private bool _autoSelectPending;
+    private bool _autoSelected;
+    private bool _autoSelecting;
     private string _draft = "";
     private string _chatStatus = "";
     private CancellationTokenSource? _historyCancellation;
@@ -62,10 +65,11 @@ public sealed partial class DiscordFriendsViewModel
     public Visibility PartyVisibility => Party is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility NoPartyVisibility => Party is null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility InviteVisibility => PartyInvites.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ConversationVisibility => IsConnected && (SelectedFriend is { IsFriend: true } || _partyChat && Party is not null) ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ConversationVisibility => IsConnected && (SelectedFriend is { IsFriend: true } or { IsDirect: true } || _partyChat && Party is not null) ? Visibility.Visible : Visibility.Collapsed;
     public Visibility FriendMenuVisibility => SelectedFriend?.IsFriend == true ? Visibility.Visible : Visibility.Collapsed;
     public Visibility NoConversationVisibility => ConversationVisibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ChatEmptyVisibility => Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ProfileCardVisibility => SelectedFriend is { IsFriend: true } && !_partyChat && Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility AddFriendVisibility => _showAddFriend ? Visibility.Visible : Visibility.Collapsed;
     public Visibility LoadingChatVisibility => _chatLoading ? Visibility.Visible : Visibility.Collapsed;
     public string ChatTitle => _partyChat ? "Party chat" : SelectedFriend?.DisplayName ?? "Messages";
@@ -77,17 +81,33 @@ public sealed partial class DiscordFriendsViewModel
     public string NavigationSocialTooltip => PartyInvites.Count > 0 ? $"Friends · {PartyInvites.Count} party invitation{(PartyInvites.Count == 1 ? "" : "s")}" : "Friends and parties";
     public IReadOnlyList<DiscordInvitePerson> InvitePeople => InviteTargets.OrderByDescending(friend => friend.IsOnline).ThenBy(friend => friend.DisplayName)
         .Select(friend => new DiscordInvitePerson(friend, PartyMembers.Any(member => member.Id == friend.Id), _sentPartyInvites.Contains(friend.Id))).ToArray();
+    public IReadOnlyList<DiscordFriend> OnlineFriends => _discord.Snapshot?.Relationships.Where(friend => friend.IsFriend && friend.IsOnline)
+        .OrderBy(friend => friend.DisplayName).Take(6).ToArray() ?? [];
+    public Visibility OnlineFriendsVisibility => OnlineFriends.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     public string ChatSubtitle => _partyChat ? PartyTitle : SelectedFriend?.Detail ?? "Choose a friend to start a conversation.";
     public string ChatStatus { get => _chatStatus; private set => SetProperty(ref _chatStatus, value); }
-    public string MessageDraft { get => _draft; set { if (SetProperty(ref _draft, value)) SendMessageCommand.NotifyCanExecuteChanged(); } }
+    public string MessageDraft { get => _draft; set { if (SetProperty(ref _draft, value)) { SendMessageCommand.NotifyCanExecuteChanged(); if (value.Length > 0) _autoSelectPending = false; } } }
+    public ulong FirstUnreadId
+    {
+        get
+        {
+            if (_partyChat) return 0;
+            var entry = _conversations.Get(ConversationId);
+            if (entry is not { UnreadCount: > 0 }) return 0;
+            return Messages.FirstOrDefault(message => !message.IsOwn && message.Id > entry.ReadMessageId)?.Id ?? 0;
+        }
+    }
     public DiscordFriend? SelectedFriend
     {
         get => _selectedFriend;
         set
         {
             if (_updatingFriends || value is null && _selectedFriend is not null && IsConnected) return;
-            if (value is not null && !value.IsFriend) return;
+            if (value is not null && value is not { IsFriend: true } and not { IsDirect: true }) return;
             if (_selectedFriend == value) return;
+            // Only the auto-opener may present a conversation the user didn't choose.
+            _autoSelected = _autoSelecting;
+            if (!_autoSelecting) _autoSelectPending = false;
             ConversationChanging?.Invoke(this, EventArgs.Empty);
             SaveDraft();
             if (!SetProperty(ref _selectedFriend, value)) return;
@@ -158,6 +178,7 @@ public sealed partial class DiscordFriendsViewModel
         DismissInviteCommand = new RelayCommand<DiscordPartyInvite>(invite => { if (invite is not null) _chat?.DismissPartyInvite(invite.Id); RefreshWorkspace(); });
         OpenPartyChatCommand = new RelayCommand(OpenPartyChat, () => HasCommunicationPermission && Party is not null);
         ToggleAddFriendCommand = new RelayCommand(() => { _showAddFriend = !_showAddFriend; OnPropertyChanged(nameof(AddFriendVisibility)); });
+        InitializeMessageEditing();
         RefreshGames();
     }
 
@@ -178,10 +199,12 @@ public sealed partial class DiscordFriendsViewModel
     }
     private void SaveDraft()
     {
-        if (MessageDraft.Length == 0) _conversationDrafts.Remove(ConversationKey);
+        // An in-progress edit must not replace the conversation draft with the edited message text.
+        var draft = _editingMessage is null ? MessageDraft : _draftBeforeEdit;
+        if (draft.Length == 0) _conversationDrafts.Remove(ConversationKey);
         else
         {
-            _conversationDrafts[ConversationKey] = MessageDraft;
+            _conversationDrafts[ConversationKey] = draft;
             while (_conversationDrafts.Count > 32) _conversationDrafts.Remove(_conversationDrafts.Keys.First());
         }
     }
@@ -192,6 +215,7 @@ public sealed partial class DiscordFriendsViewModel
         var previousHistory = _historyCancellation; _historyCancellation = null; previousHistory?.Cancel();
         var generation = ++_conversationGeneration;
         var id = ConversationId; var party = _partyChat;
+        ResetMessageEdit();
         MarkCurrentConversationRead();
         Messages.Clear(); _deletedMessages.Clear(); _chatLoading = false;
         foreach (var pending in _outbox.Values.Where(entry => entry.Key == ConversationKey).ToArray()) UpsertMessage(pending.Message);
@@ -205,9 +229,14 @@ public sealed partial class DiscordFriendsViewModel
             // Merge messages which arrived live during the history request instead of discarding them.
             foreach (var message in history)
                 if (!_deletedMessages.Contains(message.Id) && !Messages.Any(current => current.Id == message.Id)) UpsertMessage(message);
-            ChatStatus = "";
+            if (!party && history.Count > 0) _conversations.Record(id, history[^1]);
+            MarkCurrentConversationRead();
+            OnPropertyChanged(nameof(FirstUnreadId));
+            ChatStatus = history.Count >= 200 ? "Showing the latest messages. Discord only shares the last 72 hours of chat history with games." : "";
         }
         catch (OperationCanceledException) { if (generation == _conversationGeneration) ChatStatus = "Conversation loading cancelled."; }
+        // 404/10003 means the DM channel doesn't exist yet — the centered empty state already invites a first message.
+        catch (DiscordNoChannelException) { if (generation == _conversationGeneration) ChatStatus = ""; }
         catch (Exception exception) { if (generation == _conversationGeneration) ChatStatus = exception is DiscordSocialException or InvalidOperationException ? exception.Message : "Conversation couldn't load. Use Reload to try again."; }
         finally
         {
@@ -218,16 +247,21 @@ public sealed partial class DiscordFriendsViewModel
     {
         void Update()
         {
-            if (change.Message is { } incoming) { ReconcileOutgoing(incoming); NotifyIncomingMessage(incoming); }
+            if (change.Message is { } incoming)
+            {
+                ReconcileOutgoing(incoming); NotifyIncomingMessage(incoming);
+                if (incoming.LobbyId == 0) _conversations.Record(incoming.PeerId, incoming);
+            }
             if (change.DeletedId > 0)
             {
-                _deletedMessages.Add(change.DeletedId);
-                if (_deletedMessages.Count > 2048) _deletedMessages.Remove(_deletedMessages.Min());
-                var old = Messages.FirstOrDefault(message => message.Id == change.DeletedId); if (old is not null) Messages.Remove(old);
+                RememberDeletion(change.DeletedId);
+                var old = Messages.FirstOrDefault(message => message.Id == change.DeletedId);
+                if (old is not null) { Messages.Remove(old); if (old.LobbyId == 0) _conversations.Forget(old.PeerId, old.Id); }
+                if (_editingMessage?.Id == change.DeletedId) ResetMessageEdit();
             }
             else if (change.Message is { } message && (message.LobbyId > 0
                 ? _partyChat && message.LobbyId == ConversationId : !_partyChat && message.PeerId == ConversationId)) UpsertMessage(message);
-            OnPropertyChanged(nameof(ChatEmptyVisibility));
+            OnPropertyChanged(nameof(ChatEmptyVisibility)); OnPropertyChanged(nameof(ProfileCardVisibility)); OnPropertyChanged(nameof(FirstUnreadId));
         }
         if (_context is not null && SynchronizationContext.Current != _context) _context.Post(_ => Update(), null); else Update();
     }
@@ -236,19 +270,93 @@ public sealed partial class DiscordFriendsViewModel
         if (_deletedMessages.Contains(message.Id)) return;
         ReconcileOutgoing(message);
         var existing = Messages.Select((item, index) => (item, index)).FirstOrDefault(value => value.item.Id == message.Id);
-        if (existing.item is not null) { if (existing.item != message) Messages[existing.index] = message; }
+        if (existing.item is not null)
+        {
+            var replaced = message with { ShowHeader = existing.item.ShowHeader };
+            if (replaced == existing.item) return;
+            Messages[existing.index] = replaced;
+            RecomputeHeaders(existing.index);
+        }
         else
         {
             var index = 0;
             while (index < Messages.Count && (Messages[index].SentAt < message.SentAt || Messages[index].SentAt == message.SentAt && Messages[index].Id < message.Id)) index++;
-            Messages.Insert(index, message);
+            var header = index == 0 || NeedsHeader(Messages[index - 1], message);
+            Messages.Insert(index, message with { ShowHeader = header });
+            RecomputeHeaders(index + 1);
         }
         while (Messages.Count > 200) Messages.RemoveAt(0);
-        OnPropertyChanged(nameof(ChatEmptyVisibility));
+        if (Messages.Count > 0 && !Messages[0].ShowHeader) Messages[0] = Messages[0] with { ShowHeader = true };
+        OnPropertyChanged(nameof(ChatEmptyVisibility)); OnPropertyChanged(nameof(ProfileCardVisibility)); OnPropertyChanged(nameof(FirstUnreadId));
     }
-    public void SetChatVisible(bool visible) { _chatVisible = visible; _chat?.SetShowingChat(visible && _windowActive && ConversationVisibility == Visibility.Visible); MarkCurrentConversationRead(); }
+    private static bool NeedsHeader(DiscordChatMessage previous, DiscordChatMessage message) =>
+        previous.AuthorId != message.AuthorId || previous.IsSystem != message.IsSystem || previous.DayKey != message.DayKey
+        || message.SentAt - previous.SentAt > TimeSpan.FromMinutes(5);
+    private void RecomputeHeaders(int from)
+    {
+        for (var index = Math.Max(0, from); index < Messages.Count && index <= from + 2; index++)
+        {
+            var expected = index == 0 || NeedsHeader(Messages[index - 1], Messages[index]);
+            if (Messages[index].ShowHeader != expected) Messages[index] = Messages[index] with { ShowHeader = expected };
+        }
+    }
+    public void SetChatVisible(bool visible)
+    {
+        _chatVisible = visible;
+        // Refresh Discord's DM summaries whenever Friends comes back on screen, so messages
+        // sent while Steamy was closed or suspended shape the list and the auto-opened chat.
+        if (visible)
+        {
+            if (_selectedFriend is null || _autoSelected) _autoSelectPending = true;
+            _ = SyncConversationSummariesAsync();
+        }
+        else _autoSelectPending = false;
+        _chat?.SetShowingChat(visible && _windowActive && ConversationVisibility == Visibility.Visible);
+        MarkCurrentConversationRead();
+        TrySelectRecentConversation();
+    }
+    // Fresh summaries can move an automatic pick to a conversation Steamy never saw live.
+    private void UpgradeAfterFreshSummaries()
+    {
+        void Finish() { if (_chatVisible && !_partyChat && _summariesLoaded) UpgradeAutoSelection(); }
+        if (_context is not null && SynchronizationContext.Current != _context) _context.Post(_ => Finish(), null);
+        else Finish();
+    }
+    // Mirror Discord: land on the DM with the newest activity. Recency comes from the message
+    // summaries Discord reports, so conversations that happened while Steamy was closed still
+    // decide which chat opens. Only a chat Steamy opened by itself may be replaced; a chat the
+    // user picked (or is typing in) is never taken away.
+    private void TrySelectRecentConversation()
+    {
+        if (!_chatVisible || !IsConnected || _partyChat || !_autoSelectPending) return;
+        if (_selectedFriend is null) SelectNewestConversation();
+        else if (!_autoSelected || MessageDraft.Length > 0) _autoSelectPending = false;
+    }
+    private void UpgradeAutoSelection()
+    {
+        if (!_autoSelectPending) return;
+        if (_selectedFriend is not null && (!_autoSelected || MessageDraft.Length > 0)) { _autoSelectPending = false; return; }
+        if (SelectNewestConversation()) _autoSelectPending = false;
+    }
+    private bool SelectNewestConversation()
+    {
+        var newest = _conversations.Peers
+            .Select(id => (Id: id, Entry: _conversations.Get(id)))
+            .Where(candidate => candidate.Entry is { LastMessageId: > 0 })
+            .OrderByDescending(candidate => candidate.Entry!.LastMessageAt)
+            .FirstOrDefault();
+        if (newest.Entry is null) return false;
+        if (_selectedFriend?.Id == newest.Id) return true;
+        var person = People().FirstOrDefault(candidate => candidate.Id == newest.Id && (candidate.IsFriend || candidate.IsDirect));
+        // The newest peer may still be resolving from the user directory; a later Refresh retries.
+        if (person is null) return false;
+        _autoSelecting = true;
+        try { SelectedFriend = person; } finally { _autoSelecting = false; }
+        _autoSelected = true;
+        return true;
+    }
     private void ClearConversation()
-    { ConversationChanging?.Invoke(this, EventArgs.Empty); var pending = _historyCancellation; _historyCancellation = null; pending?.Cancel(); _conversationGeneration++; _chatLoading = false; Messages.Clear(); _deletedMessages.Clear(); MessageDraft = ""; }
+    { ConversationChanging?.Invoke(this, EventArgs.Empty); var pending = _historyCancellation; _historyCancellation = null; pending?.Cancel(); _conversationGeneration++; _chatLoading = false; Messages.Clear(); _deletedMessages.Clear(); ResetMessageEdit(); MessageDraft = ""; OnPropertyChanged(nameof(FirstUnreadId)); }
     private void GamesChanged(object? sender, NotifyCollectionChangedEventArgs args) => RefreshGames();
     private void RefreshGames()
     {
@@ -264,8 +372,9 @@ public sealed partial class DiscordFriendsViewModel
         if (SendMessageCommand is null) return;
         var partyId = Party?.Id ?? 0;
         if (_invitePartyId != partyId) { _sentPartyInvites.Clear(); _invitePartyId = partyId; }
-        if (!IsConnected) { ResetOutbox(); _conversationDrafts.Clear(); ClearConversation(); _readPositions.Clear(); _selectedFriend = null; _inviteFriend = null; _partyChat = false; OnPropertyChanged(nameof(SelectedFriend)); }
-        else if (_selectedFriend is { } selected && !_discord.Snapshot.Relationships.Any(friend => friend.Id == selected.Id && friend.IsFriend))
+        if (!IsConnected) { ResetOutbox(); _conversationDrafts.Clear(); ClearConversation(); _readPositions.Clear(); _selectedFriend = null; _inviteFriend = null; _partyChat = false; _summariesLoaded = false; _summariesGeneration++; _summarySync = null; _autoSelectPending = true; _autoSelected = false; OnPropertyChanged(nameof(SelectedFriend)); }
+        else if (_selectedFriend is { } selected && !_discord.Snapshot.Relationships.Any(friend => friend.Id == selected.Id && friend.IsFriend)
+            && !_directPeers.ContainsKey(selected.Id))
         { ClearConversation(); _selectedFriend = null; OnPropertyChanged(nameof(SelectedFriend)); }
         if (Party is null && _partyChat) { _partyChat = false; ClearConversation(); }
         if (_inviteFriend is { } target && !InviteTargets.Any(friend => friend.Id == target.Id)) { _inviteFriend = null; OnPropertyChanged(nameof(InviteFriend)); }
@@ -274,19 +383,22 @@ public sealed partial class DiscordFriendsViewModel
         foreach (var invite in invites) if (!PartyInvites.Any(existing => existing.Id == invite.Id)) PartyInvites.Add(invite);
         if (_selectedFriend is { } current)
         {
-            _selectedFriend = _discord.Snapshot.Relationships.FirstOrDefault(friend => friend.Id == current.Id && friend.IsFriend);
+            _selectedFriend = _discord.Snapshot.Relationships.FirstOrDefault(friend => friend.Id == current.Id && friend.IsFriend)
+                ?? Friends.FirstOrDefault(friend => friend.Id == current.Id && friend.IsDirect);
             OnPropertyChanged(nameof(SelectedFriend));
         }
         foreach (var name in new[] { nameof(HasCommunicationPermission), nameof(PartyTitle), nameof(PartyDescription), nameof(PartyMembers), nameof(PartyVisibility),
-            nameof(NoPartyVisibility), nameof(PartyCode), nameof(InviteVisibility), nameof(ConversationVisibility), nameof(NoConversationVisibility), nameof(ChatEmptyVisibility),
-            nameof(ChatTitle), nameof(ChatInitial), nameof(ChatAvatarUrl), nameof(ChatSubtitle), nameof(ConversationKey), nameof(InviteTargets), nameof(InvitePeople), nameof(JoinInviteLabel), nameof(CompactPartyLabel), nameof(NavigationSocialTooltip), nameof(PlayWithFriendLabel), nameof(LoadingChatVisibility), nameof(PartyArtwork), nameof(PartyGame), nameof(CanChooseGame), nameof(LaunchLabel), nameof(FriendMenuVisibility) }) OnPropertyChanged(name);
+            nameof(NoPartyVisibility), nameof(PartyCode), nameof(InviteVisibility), nameof(ConversationVisibility), nameof(NoConversationVisibility), nameof(ChatEmptyVisibility), nameof(ProfileCardVisibility),
+            nameof(ChatTitle), nameof(ChatInitial), nameof(ChatAvatarUrl), nameof(ChatSubtitle), nameof(ConversationKey), nameof(InviteTargets), nameof(InvitePeople), nameof(JoinInviteLabel), nameof(CompactPartyLabel), nameof(NavigationSocialTooltip), nameof(PlayWithFriendLabel), nameof(LoadingChatVisibility), nameof(PartyArtwork), nameof(PartyGame), nameof(CanChooseGame), nameof(LaunchLabel), nameof(FriendMenuVisibility),
+            nameof(OnlineFriends), nameof(OnlineFriendsVisibility) }) OnPropertyChanged(name);
         RefreshPartyArtwork();
         _chat?.SetShowingChat(_chatVisible && _windowActive && ConversationVisibility == Visibility.Visible);
         RefreshWorkspaceCommands();
+        TrySelectRecentConversation();
     }
     private void RefreshWorkspaceCommands()
     {
-        foreach (var command in new IRelayCommand?[] { SendMessageCommand, ReloadChatCommand, CreatePartyCommand, InviteFriendCommand, InvitePersonCommand, PlayWithFriendCommand, LeavePartyCommand, LaunchGameCommand, JoinInviteCommand, OpenPartyChatCommand }) command?.NotifyCanExecuteChanged();
+        foreach (var command in new IRelayCommand?[] { SendMessageCommand, ReloadChatCommand, CreatePartyCommand, InviteFriendCommand, InvitePersonCommand, PlayWithFriendCommand, LeavePartyCommand, LaunchGameCommand, JoinInviteCommand, OpenPartyChatCommand, BeginEditMessageCommand, CancelMessageEditCommand, DeleteMessageCommand }) command?.NotifyCanExecuteChanged();
         OpenDiscordMessageCommand?.NotifyCanExecuteChanged();
         RetryMessageCommand?.NotifyCanExecuteChanged();
         JoinPartyCodeCommand?.NotifyCanExecuteChanged(); CopyPartyCodeCommand?.NotifyCanExecuteChanged();

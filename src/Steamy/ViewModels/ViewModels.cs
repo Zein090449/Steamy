@@ -153,6 +153,10 @@ public sealed partial class LibraryViewModel : ViewModelBase
     public string SelectedMode { get => _mode; set { if (SetProperty(ref _mode, value)) { _page = 1; OnPropertyChanged(nameof(DiscoveryDescription)); OnPropertyChanged(nameof(LibraryTitle)); OnPropertyChanged(nameof(CatalogCountLabel)); RefreshPage(); if (value != "Your games") _ = LoadSelectedCatalogAsync(); } } }    public string SelectedTypeFilter { get=>_typeFilter; set { if(SetProperty(ref _typeFilter,"Game")) { _page=1; RefreshPage(); } } }
     public LibraryNsfwScope NsfwScope { get=>_nsfwScope; set { if(SetProperty(ref _nsfwScope,value)) { _page=1; RefreshPage(); } } }
     public string SelectedSort { get=>_sort; set { if(SetProperty(ref _sort,value)) RefreshPage(); } } public int PageSize { get=>_pageSize; set { if(SetProperty(ref _pageSize,value)) RefreshPage(); } }
+    private bool _compactCards;
+    public bool IsCompactCards { get => _compactCards; set { if (SetProperty(ref _compactCards, value)) { OnPropertyChanged(nameof(CardWidth)); OnPropertyChanged(nameof(CardColumns)); } } }
+    public double CardWidth => IsCompactCards ? 126d : 184d;
+    public int CardColumns => IsCompactCards ? 9 : 6;
     public string SearchText { get=>_search; set { if(SetProperty(ref _search,value ?? string.Empty)) { _page=1; OnPropertyChanged(nameof(HasActiveFilters)); OnPropertyChanged(nameof(FilterSummary)); OnPropertyChanged(nameof(HasSearchQuery)); OnPropertyChanged(nameof(HasSearchSuggestions)); Interlocked.Increment(ref _filterGeneration); _filterCancellation?.Cancel(); _searchDebounceTimer.Stop(); _searchDebounceTimer.Start(); } } }
     public RangeObservableCollection<SteamCatalogItem> SearchSuggestions { get; } = new();
     public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchText);

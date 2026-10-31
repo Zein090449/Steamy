@@ -45,18 +45,21 @@
           <TextBlock Text="Members" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,20,0,12" />
           <ItemsControl ItemsSource="{Binding PartyMembers}"><ItemsControl.ItemTemplate><DataTemplate>
             <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-              <Border Width="34" Height="34" CornerRadius="17" Background="{DynamicResource SocialAccentSoftBrush}" controls:RoundedClip.Radius="17" Margin="0,0,10,0"><Grid><ui:SymbolIcon Symbol="Person24" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" /><Image controls:AsyncArtwork.Private="True" controls:AsyncArtwork.Width="120" controls:AsyncArtwork.Height="120" controls:AsyncArtwork.Url="{Binding AvatarUrl}" Stretch="UniformToFill" /></Grid></Border>
+              <controls:SocialAvatar Diameter="34" Margin="0,0,10,0" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" />
               <TextBlock Grid.Column="1" Text="{Binding DisplayName}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </Grid>
           </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
           <Border BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0" Margin="0,2,0,0"><TextBlock Text="Invite your friends" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,10" /></Border>
           <ItemsControl ItemsSource="{Binding InvitePeople}"><ItemsControl.ItemTemplate><DataTemplate>
-            <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-              <StackPanel VerticalAlignment="Center"><TextBlock Text="{Binding Friend.DisplayName}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Friend.Detail}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,3,0,0" /></StackPanel>
+            <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <controls:SocialAvatar Diameter="30" Margin="0,0,10,0" Url="{Binding Friend.AvatarUrl}" Initial="{Binding Friend.Initial}" Presence="{Binding Friend.Presence}" ShowPresence="True" />
+              <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding Friend.DisplayName}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Friend.Detail}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,3,0,0" /></StackPanel>
               <ui:Button Grid.Column="1" Content="{Binding Label}" Style="{StaticResource SocialQuietButton}" Padding="9,6" Margin="8,0,0,0" Command="{Binding DataContext.InvitePersonCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding Friend}" />
             </Grid>
           </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-          <ui:Button Content="Leave party" Command="{Binding LeavePartyCommand}" Style="{StaticResource SocialQuietButton}" HorizontalAlignment="Left" Margin="0,12,0,0" />
+          <Border BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="0,1,0,0" Padding="0,14,0,0" Margin="0,12,0,0">
+            <ui:Button Content="Leave party" Command="{Binding LeavePartyCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Foreground="{DynamicResource DangerBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" Background="{DynamicResource SocialFieldBrush}" ToolTip="Leave this party. It ends for you immediately." />
+          </Border>
         </StackPanel>
 
         <ProgressBar IsIndeterminate="True" Height="2" Visibility="{Binding BusyVisibility}" Margin="0,12,0,0" Style="{StaticResource JobProgressBar}" />

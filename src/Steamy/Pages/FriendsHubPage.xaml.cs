@@ -87,7 +87,7 @@ public partial class FriendsHubPage : Page
     private void Person_Click(object sender, RoutedEventArgs args)
     {
         if (sender is not FrameworkElement { Tag: DiscordFriend friend }) return;
-        Social.SearchText = ""; Social.SelectedFilter = "Friends"; Social.SelectedFriend = friend;
+        Social.SearchText = ""; Social.SelectedFilter = "All"; Social.SelectedFriend = friend;
         Shell?.OpenSocialDock(); Shell?.SocialDockPage?.RevealConversation();
     }
     private void Party_Click(object sender, RoutedEventArgs args) { Shell?.OpenSocialDock(); Shell?.SocialDockPage?.RevealParty(); }

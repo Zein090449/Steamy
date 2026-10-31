@@ -45,8 +45,8 @@ internal static class DiscordSdkErrors
             _ when signIn => "Discord couldn't complete sign-in. Check the application's OAuth2 setup and try again.",
             _ when code == 80001 => "Discord privacy or blocking settings prevent this request.",
             _ when code == 10003 && operation is "CreateOrJoinLobby" or "CreateOrJoinLobbyWithMetadata" => "Discord couldn't open the voice or party room. Start a new call or party; reconnect Discord if it repeats.",
-            _ when code == 10003 => "This Discord channel is no longer available. Reopen the conversation or start a new call; reconnect Discord if it repeats.",
-            _ => "Check your connection, username and Discord privacy settings, then try again."
+            _ when code == 10003 && operation == "GetUserMessagesWithLimit" => "No messages with this friend yet. Say hello — new messages will appear here.",
+            _ => "Check your connection and Discord privacy settings, then try again."
         };
         var details = new List<string>();
         if (status > 0) details.Add("HTTP " + status);
@@ -58,6 +58,7 @@ internal static class DiscordSdkErrors
             if (type is "ValidationError" or "ClientNotReady" or "Disabled" or "ClientDestroyed" || status is 400 or 401 or 403 or 404 or 413 or 422 or 429)
                 return new DiscordSendRejectedException(message);
         // A client configuration error must not delete a valid saved session.
+        if (operation == "GetUserMessagesWithLimit" && code == 10003) return new DiscordNoChannelException(message);
         return oauth is not ("invalid_client" or "unauthorized_client") && (oauth == "invalid_grant" || type == "AuthorizationFailed" || status == 401)
             ? new DiscordAuthorizationException(message) : new DiscordSocialException(message);
     }
@@ -77,3 +78,5 @@ internal static class DiscordSdkErrors
 }
 
 internal sealed class DiscordDesktopApprovalException() : DiscordSocialException("The Discord desktop client couldn't approve sign-in (RPCError 5000). Please use the browser sign-in.");
+// Discord returns 404/10003 for a DM conversation with no channel yet; that is an empty history, not a failure.
+internal sealed class DiscordNoChannelException(string message) : DiscordSocialException(message);

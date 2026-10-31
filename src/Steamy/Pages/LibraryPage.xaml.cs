@@ -90,6 +90,10 @@ public partial class LibraryPage : Page
         InitializeComponent();
         DepotChoices.ItemsSource = _depotChoices;
         DataContext = App.Services.GetRequiredService<LibraryViewModel>();
+        if (!installationOnly)
+            ((LibraryViewModel)DataContext).IsCompactCards =
+                App.Services.GetRequiredService<ISettingsService>().Load().LibraryCompactCards;
+        UpdateCardSizeToggle();
         Loaded += (_, _) =>
         {
             UiThemeService.PaletteChanged += InstallationPaletteChanged;
@@ -201,6 +205,26 @@ public partial class LibraryPage : Page
     private void InstallGameMenu_Click(object sender, RoutedEventArgs args)
     {
         if (sender is MenuItem { Tag: SteamCatalogItem item }) OpenDownloadSetup(item);
+    }
+
+    private void UpdateCardSizeToggle()
+    {
+        if (DataContext is not LibraryViewModel model) return;
+        CardSizeToggle.Icon = new Wpf.Ui.Controls.SymbolIcon(model.IsCompactCards
+            ? Wpf.Ui.Controls.SymbolRegular.GridDots24
+            : Wpf.Ui.Controls.SymbolRegular.Apps24);
+        CardSizeToggle.ToolTip = model.IsCompactCards ? "Switch to large cards" : "Switch to compact cards";
+    }
+
+    private void CardSizeToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not LibraryViewModel model) return;
+        model.IsCompactCards = !model.IsCompactCards;
+        UpdateCardSizeToggle();
+        var settingsService = App.Services.GetRequiredService<ISettingsService>();
+        var settings = settingsService.Load();
+        settings.LibraryCompactCards = model.IsCompactCards;
+        _ = settingsService.SaveAsync(settings);
     }
 
     public void OpenGameDetails(SteamCatalogItem item)

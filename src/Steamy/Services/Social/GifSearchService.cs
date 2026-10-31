@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Steamy.Models;
@@ -28,8 +29,9 @@ public sealed partial class GifSearchService : IGifSearchService
     private string _rateLimitedKey = "";
     public GifSearchService(ISettingsService settings) : this(settings.Load(), SharedClient) { }
     internal GifSearchService(AppSettings settings, HttpClient http) { _settings = settings; _http = http; }
-    public string Provider => _settings.GifProvider == "GIPHY" ? "GIPHY" : "KLIPY";
-    public bool IsConfigured => Key().Length > 0;
+    public string Provider => _settings.GifProvider switch { "KLIPY" => "KLIPY", "GIPHY" => "GIPHY", _ => "TENOR" };
+    // Tenor's public website catalog needs no key; the API providers require a client key.
+    public bool IsConfigured => Provider == "TENOR" || Key().Length > 0;
     [GeneratedRegex("^[A-Za-z0-9_-]{1,160}$")]
     private static partial Regex Identifier();
     internal static bool ValidId(string id) => Identifier().IsMatch(id);
@@ -38,6 +40,7 @@ public sealed partial class GifSearchService : IGifSearchService
     {
         if (query.Length > 50) throw new GifProviderException("Search can be up to 50 characters.");
         page = Math.Clamp(page, 1, 20);
+        if (Provider == "TENOR") return TenorSearchAsync(query, token);
         var trending = query.Length == 0;
         var parameters = Provider == "GIPHY" ? $"limit=24&offset={(page - 1) * 24}&rating=pg-13" : $"per_page=24&page={page}";
         if (!trending) parameters += "&q=" + Uri.EscapeDataString(query);
@@ -47,6 +50,7 @@ public sealed partial class GifSearchService : IGifSearchService
     {
         if (ids.Count == 0) return Task.FromResult(new GifSearchPage([], false));
         if (ids.Count > 50 || ids.Any(id => !ValidId(id))) throw new GifProviderException("Invalid GIF favorite.");
+        if (Provider == "TENOR") return TenorFavoritesAsync(ids, token);
         return RequestAsync(Provider == "GIPHY" ? "" : "items", (Provider == "GIPHY" ? "ids=" : "slugs=") + Uri.EscapeDataString(string.Join(',', ids)), token);
     }
     private async Task<GifSearchPage> RequestAsync(string endpoint, string parameters, CancellationToken token)
@@ -82,6 +86,103 @@ public sealed partial class GifSearchService : IGifSearchService
         catch (HttpRequestException) { throw new GifProviderException("GIF search couldn't connect. Check your connection."); }
         catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
         { throw new GifProviderException("The GIF provider returned an unsupported response."); }
+    }
+    // Tenor's public search pages carry the catalog as JSON in the store-cache script; no API key applies.
+    [GeneratedRegex("<script id=\"store-cache\"[^>]*>(.*?)</script>", RegexOptions.Singleline)]
+    private static partial Regex StoreCache();
+    private async Task<GifSearchPage> TenorSearchAsync(string query, CancellationToken token)
+    {
+        var words = query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var path = words.Length == 0 ? "trending" : string.Join('+', words.Select(Uri.EscapeDataString));
+        var html = await TenorPageAsync($"https://tenor.com/search/{path}-gifs", token).ConfigureAwait(false);
+        return new(ParseTenor(html, null, 24), false);
+    }
+    private async Task<GifSearchPage> TenorFavoritesAsync(IReadOnlyList<string> ids, CancellationToken token)
+    {
+        var results = new GifItem?[ids.Count];
+        using var slots = new SemaphoreSlim(4);
+        await Task.WhenAll(ids.Select(async (id, index) =>
+        {
+            await slots.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                var html = await TenorPageAsync($"https://tenor.com/view/{Uri.EscapeDataString(id)}", token).ConfigureAwait(false);
+                results[index] = ParseTenor(html, id, 1).FirstOrDefault();
+            }
+            catch (Exception error) when (error is GifProviderException or HttpRequestException) { }
+            finally { slots.Release(); }
+        })).ConfigureAwait(false);
+        return new(results.Where(item => item is not null).Select(item => item!).ToArray(), false);
+    }
+    private async Task<string> TenorPageAsync(string url, CancellationToken token)
+    {
+        if (_rateLimitedKey == "tenor" && DateTimeOffset.UtcNow < _retryAfter) throw new GifProviderException("Tenor's request limit was reached. Try again later.");
+        try
+        {
+            using var response = await ImageRedirects.FollowAsync(_http, new Uri(url), token).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _rateLimitedKey = "tenor";
+                _retryAfter = DateTimeOffset.UtcNow.AddSeconds(Math.Clamp(response.Headers.RetryAfter?.Delta?.TotalSeconds ?? 60, 1, 3600));
+                throw new GifProviderException("Tenor's request limit was reached. Try again later.");
+            }
+            if (!response.IsSuccessStatusCode) throw new GifProviderException("Tenor is unavailable. Try again shortly.");
+            const int limit = 3 * 1024 * 1024;
+            if (response.Content.Headers.ContentLength > limit) throw new GifProviderException("The Tenor page was too large.");
+            await using var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            using var memory = new MemoryStream(); var buffer = new byte[16384]; int read;
+            while ((read = await source.ReadAsync(buffer, token).ConfigureAwait(false)) > 0)
+            { if (memory.Length + read > limit) throw new GifProviderException("The Tenor page was too large."); memory.Write(buffer, 0, read); }
+            return Encoding.UTF8.GetString(memory.ToArray());
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new GifProviderException("GIF search timed out. Try again."); }
+        catch (HttpRequestException) { throw new GifProviderException("GIF search couldn't connect. Check your connection."); }
+    }
+    internal static IReadOnlyList<GifItem> ParseTenor(string html, string? onlyId, int max)
+    {
+        var script = StoreCache().Match(html);
+        if (!script.Success) return [];
+        try
+        {
+            using var document = JsonDocument.Parse(script.Groups[1].Value, new JsonDocumentOptions { MaxDepth = 64 });
+            var items = new List<GifItem>();
+            if (document.RootElement.TryGetProperty("gifs", out var gifs) && gifs.TryGetProperty("byId", out var byId))
+                CollectTenor(byId, onlyId, max, items);
+            if (items.Count == 0 && document.RootElement.TryGetProperty("universal", out var universal) && universal.TryGetProperty("search", out var search))
+                CollectTenor(search, onlyId, max, items);
+            return items;
+        }
+        catch (JsonException) { return []; }
+    }
+    private static void CollectTenor(JsonElement container, string? onlyId, int max, List<GifItem> items)
+    {
+        foreach (var entry in container.EnumerateObject())
+        {
+            if (onlyId is not null && !entry.Name.Equals(onlyId, StringComparison.Ordinal)) continue;
+            if (!entry.Value.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array) continue;
+            foreach (var item in results.EnumerateArray())
+            {
+                if (items.Count >= max) return;
+                if (TenorItem(item) is { } gif && (onlyId is null || gif.Id == onlyId) && !items.Any(existing => existing.Id == gif.Id)) items.Add(gif);
+            }
+        }
+    }
+    private static GifItem? TenorItem(JsonElement item)
+    {
+        if (!item.TryGetProperty("id", out var idValue) || idValue.GetString() is not { } id || !ValidId(id)) return null;
+        var title = item.TryGetProperty("content_description", out var description) && description.ValueKind == JsonValueKind.String && description.GetString() is { Length: > 0 } text
+            ? text
+            : item.TryGetProperty("title", out var label) && label.ValueKind == JsonValueKind.String && label.GetString() is { Length: > 0 } fallback ? fallback : "GIF";
+        if (title.Length > 200) title = title[..200];
+        if (!item.TryGetProperty("itemurl", out var itemUrl) || !Uri.TryCreate(itemUrl.GetString(), UriKind.Absolute, out var share) || !ChatMediaPolicy.IsPageUri(share)) return null;
+        if (!item.TryGetProperty("media_formats", out var formats)) return null;
+        foreach (var size in new[] { "tinygif", "mediumgif", "gif" })
+        {
+            if (!formats.TryGetProperty(size, out var format) || !format.TryGetProperty("url", out var url)) continue;
+            if (Uri.TryCreate(url.GetString(), UriKind.Absolute, out var preview) && ChatMediaPolicy.IsImageUri(preview))
+                return new GifItem("TENOR", id, title, preview.AbsoluteUri, share.AbsoluteUri);
+        }
+        return null;
     }
     internal static GifSearchPage Parse(byte[] bytes, string provider)
     {

@@ -23,9 +23,9 @@ public sealed partial class DiscordWorkspaceTests
         var service = new SocialFixture(); var settings = new Settings();
         settings.Load().VoiceOptions = new(PushToTalk: true, Muted: true);
         using var voice = new DiscordVoiceViewModel(service, settings);
-        using var workspace = new DiscordFriendsViewModel(service, settings, voice: voice);
-        workspace.SelectedFriend = workspace.Friends[0];
-        await service.RestoreAsync(); service.ChangePresence(2, "Idle");
+        using var workspace = new DiscordFriendsViewModel(service, settings, voice: voice, conversations: TestStores.Isolated());
+        workspace.SelectedFriend = workspace.Friends.First(friend => friend.Id == 2);
+        await service.RestoreAsync(); service.ChangePresence(2, DiscordPresence.Idle);
         Assert.Empty(service.VoiceOperations);
         Assert.False(voice.Active); Assert.True(voice.Muted); Assert.True(voice.PushToTalk);
         await voice.StartCallCommand.ExecuteAsync(workspace.SelectedFriend);

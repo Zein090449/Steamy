@@ -73,7 +73,9 @@ public sealed class Game : UiObservableObject
     public string AppIdLabel => $"App ID {AppId}";
     public string AppLabel => $"APP {AppId}";
     public string AchievementLabel => $"{AchievementPercent}% achievements";
-    public string ArtworkUrl => $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{AppId}/library_600x900_2x.jpg";
+    // Tiles decode around 360-400 px, so the standard cover already covers the
+    // display size and downloads in a third of the 2x asset's time.
+    public string ArtworkUrl => $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{AppId}/library_600x900.jpg";
     public string HeaderArtworkUrl => $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{AppId}/header.jpg";
 
     public BitmapImage? ArtworkImage
@@ -672,6 +674,8 @@ public sealed class AppSettings : ObservableObject
 
     public string CreamApiProxy { get => _creamApiProxy; set => SetProperty(ref _creamApiProxy, value); }
     public string BackdropStyle { get => _backdropStyle; set => SetProperty(ref _backdropStyle, value); }
+    private bool _libraryCompactCards;
+    public bool LibraryCompactCards { get => _libraryCompactCards; set => SetProperty(ref _libraryCompactCards, value); }
     public string HubcapBaseUrl { get => _hubcapBaseUrl; set => SetProperty(ref _hubcapBaseUrl, value); }
     [JsonIgnore]
     public string HubcapApiKey { get => _hubcapApiKey; set => SetProperty(ref _hubcapApiKey, value); }
@@ -719,11 +723,19 @@ public sealed class AppSettings : ObservableObject
     public string DiscordApplicationId { get => _discordApplicationId; set => SetProperty(ref _discordApplicationId, value); }
 
     // GIF search keys are public client application keys, never Discord credentials.
-    private string _gifProvider = "KLIPY", _gifApiKey = "";
+    private string _gifProvider = "TENOR", _gifApiKey = "";
     private string[] _gifFavoriteIds = [];
+    private string[] _recentEmojis = [];
+    private string[] _easterEggs = [];
     public string GifProvider { get => _gifProvider; set => SetProperty(ref _gifProvider, value); }
     public string GifApiKey { get => _gifApiKey; set => SetProperty(ref _gifApiKey, value); }
     public string[] GifFavoriteIds { get => _gifFavoriteIds; set => SetProperty(ref _gifFavoriteIds, value ?? []); }
+
+    /// <summary>Recently picked emoji (unicode), newest first. The emoji picker shares one recents list.</summary>
+    public string[] RecentEmojis { get => _recentEmojis; set => SetProperty(ref _recentEmojis, value ?? []); }
+
+    /// <summary>Found easter egg keys ("konami", "bell"). Persistence keeps progress across launches.</summary>
+    public string[] EasterEggs { get => _easterEggs; set => SetProperty(ref _easterEggs, value ?? []); }
     public Services.DiscordVoiceOptions VoiceOptions { get; set; } = new();
     public bool ControllerBackendEnabled { get; set; }
     public bool ControllerNavigation { get; set; } = true;

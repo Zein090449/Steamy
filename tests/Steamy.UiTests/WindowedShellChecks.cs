@@ -89,7 +89,7 @@ public sealed partial class PageSmokeTests
                     Assert.True(contacts.TranslatePoint(new Point(contacts.ActualWidth, 0), friends).X <= chat.TranslatePoint(new Point(), friends).X);
                     Assert.Equal(Visibility.Collapsed, ((Border)friends.FindName("PartyPane")).Visibility);
                     var model = services.GetRequiredService<DiscordFriendsViewModel>();
-                    model.SelectedFilter = "Friends"; model.SearchText = "";
+                    model.SelectedFilter = "All"; model.SearchText = "";
                     model.SelectedFriend = model.Friends.First(friend => friend.IsFriend);
                     PumpDispatcher(TimeSpan.FromMilliseconds(240));
                     var composer = (TextBox)friends.FindName("MessageComposer");

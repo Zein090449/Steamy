@@ -76,6 +76,29 @@ internal sealed partial class DiscordSdkClient : IDiscordMessageNavigation, IDis
             return (IReadOnlyList<DiscordChatMessage>)result.OrderBy(message => message.SentAt).ThenBy(message => message.Id).ToArray();
         }, token);
 
+    public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token)
+    {
+        try { return RequestSummariesAsync("GetUserMessageSummaries", [], token); }
+        catch (MissingMethodException) { return RequestSummariesAsync("GetUserMessageSummariesWithLimit", [200], token); }
+    }
+    private Task<IReadOnlyList<DiscordMessageSummary>> RequestSummariesAsync(string name, object?[] arguments, CancellationToken token) =>
+        RequestAsync(name, arguments, values =>
+        {
+            CheckResult(values[0]);
+            var summaries = new List<DiscordMessageSummary>();
+            foreach (var summary in (IEnumerable)values[1]!)
+            {
+                try
+                {
+                    var userId = Convert.ToUInt64(Call(summary, "UserId"));
+                    var lastMessageId = Convert.ToUInt64(Call(summary, "LastMessageId"));
+                    if (userId > 0) summaries.Add(new(userId, lastMessageId));
+                }
+                finally { DisposeObject(summary); }
+            }
+            return (IReadOnlyList<DiscordMessageSummary>)summaries;
+        }, token);
+
     public Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token) => SendWithNonceAsync(peerId, party, content, Guid.NewGuid().ToString("N"), token);
     public async Task<DiscordChatMessage> SendWithNonceAsync(ulong peerId, bool party, string content, string nonce, CancellationToken token = default)
     {
@@ -87,6 +110,12 @@ internal sealed partial class DiscordSdkClient : IDiscordMessageNavigation, IDis
         try { return ReadMessage(native) with { ClientNonce = nonce }; }
         finally { DisposeObject(native); }
     }
+
+    // The Social SDK only exposes DM edits and deletes; the updated/deleted callbacks refresh the view.
+    public Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token) =>
+        RequestAsync("EditUserMessage", [peerId, messageId, content], _ => true, token);
+    public Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token) =>
+        RequestAsync("DeleteUserMessage", [peerId, messageId], _ => true, token);
 
     private DiscordChatMessage ReadMessage(object native)
     {
@@ -111,14 +140,26 @@ internal sealed partial class DiscordSdkClient : IDiscordMessageNavigation, IDis
             }
         }
         finally { DisposeObject(extra); }
+        // Stickers and attachments keep their display name on the message, not on AdditionalContent.
+        if (title.Length == 0) title = ((Call(native, "AdditionalName") as string) ?? "");
+        if (title.Length > 160) title = title[..160];
+        // Discord embeds media in RawContent when Content is empty; it carries the GIF link for embed-only messages.
+        var rawContent = (Call(native, "RawContent") as string) ?? "";
+        if (rawContent.Length > 2000) rawContent = rawContent[..2000];
         var milliseconds = Convert.ToUInt64(Call(native, "SentTimestamp"));
         var time = milliseconds <= 253402300799999 ? DateTimeOffset.FromUnixTimeMilliseconds((long)milliseconds) : DateTimeOffset.UtcNow;
+        // Non-friend DM authors aren't in relationships or parties; the SDK's user cache resolves them.
+        var authorProfile = authorId == ownId ? Snapshot.Profile
+            : Snapshot.Relationships.FirstOrDefault(friend => friend.Id == authorId)?.Profile
+            ?? Party?.Members.FirstOrDefault(member => member.Id == authorId)
+            ?? GetUser(authorId);
+        var authorAvatar = authorId == ownId ? Snapshot.Profile?.AvatarUrl : authorProfile?.AvatarUrl;
         return new(Convert.ToUInt64(Call(native, "Id")), authorId, authorId == ownId ? recipientId : authorId,
             lobbyId, Convert.ToUInt64(Call(native, "ChannelId")), Call(native, "Content") as string ?? "", time, authorId == ownId,
             hasExtra, Convert.ToUInt64(Call(native, "EditedTimestamp")) > 0,
-            Snapshot.Relationships.FirstOrDefault(friend => friend.Id == authorId)?.DisplayName
-                ?? Party?.Members.FirstOrDefault(member => member.Id == authorId)?.DisplayName ?? "", title, kind, count)
+            authorProfile?.DisplayName ?? "", title, kind, count, authorAvatar)
         { ClientNonce = authorId == ownId && Call(native, "Metadata") is IDictionary metadata && metadata["steamy.client_nonce"] is string nonce && Guid.TryParseExact(nonce, "N", out _) ? nonce : "",
+          RawContent = rawContent,
           VoiceInvite = lobbyId == 0 ? DiscordVoiceProtocol.Read(Call(native, "Metadata") as IDictionary, _applicationId, authorId) : null };
     }
     public void SetShowingChat(bool showing) { if (!_disposed) Invoke(_client, "SetShowingChat", showing); }

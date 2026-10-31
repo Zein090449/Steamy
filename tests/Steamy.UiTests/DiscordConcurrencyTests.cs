@@ -47,18 +47,22 @@ public sealed class DiscordConcurrencyTests
         public TaskCompletionSource<IReadOnlyList<DiscordChatMessage>> History = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<DiscordSession> AuthorizeAsync(ulong id, CancellationToken token) => Task.FromResult(new DiscordSession(id, "fixture-access", "fixture-refresh", DateTimeOffset.UtcNow.AddHours(1), "openid sdk.social_layer"));
         public Task<DiscordSession> RefreshAsync(DiscordSession session, CancellationToken token) => Task.FromResult(session);
-        public Task ConnectAsync(ulong id, string accessToken, CancellationToken token) { Snapshot = new(true, new(1, "me", "Me", null), [new(new(2, "friend", "Friend", null), DiscordRelationshipKind.Friend, "Online")]); Changed?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
+        public Task ConnectAsync(ulong id, string accessToken, CancellationToken token) { Snapshot = new(true, new(1, "me", "Me", null), [new(new(2, "friend", "Friend", null), DiscordRelationshipKind.Friend, DiscordPresence.Online)]); Changed?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
         public Task RevokeAsync(DiscordSession session, CancellationToken token) => Task.CompletedTask;
         public Task SendFriendRequestAsync(string name, CancellationToken token) => Task.CompletedTask;
         public Task UpdateFriendAsync(ulong id, DiscordFriendAction action, CancellationToken token) => Task.CompletedTask;
+        public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token) => Task.FromResult<IReadOnlyList<DiscordMessageSummary>>([]);
         public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong id, bool party, CancellationToken token) => History.Task.WaitAsync(token);
         public Task<DiscordChatMessage> SendMessageAsync(ulong id, bool party, string content, CancellationToken token) => Task.FromResult(new DiscordChatMessage(10, 1, id, 0, 3, content, DateTimeOffset.UtcNow, true, false, false));
+        public Task EditMessageAsync(ulong id, ulong messageId, string content, CancellationToken token) => Task.CompletedTask;
+        public Task DeleteMessageAsync(ulong id, ulong messageId, CancellationToken token) => Task.CompletedTask;
         public void SetShowingChat(bool showing) { }
         public Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token) => Task.CompletedTask;
         public Task InviteToPartyAsync(ulong id, CancellationToken token) => Task.CompletedTask;
         public Task AcceptPartyInviteAsync(Guid id, CancellationToken token) => Task.CompletedTask;
         public void DismissPartyInvite(Guid id) { }
         public Task LeavePartyAsync(CancellationToken token) => Task.CompletedTask;
+        public DiscordProfile? GetUser(ulong userId) => null;
         public void Dispose() => Snapshot = DiscordSnapshot.Disconnected;
     }
 }

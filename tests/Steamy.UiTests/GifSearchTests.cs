@@ -15,7 +15,7 @@ public sealed class GifSearchTests
     [Fact]
     public async Task KlipySearchPreservesTheQueryProviderOrderAndUnmodifiedMediaUrls()
     {
-        var handler = new Handler(Response); var settings = new AppSettings { GifApiKey = "test-key" };
+        var handler = new Handler(Response); var settings = new AppSettings { GifProvider = "KLIPY", GifApiKey = "test-key" };
         var service = new GifSearchService(settings, new HttpClient(handler));
         var results = await service.SearchAsync("hi & bye!", 2, default);
         Assert.Equal("api.klipy.com", handler.Url!.Host);
@@ -28,7 +28,7 @@ public sealed class GifSearchTests
     public async Task RateLimitsDoNotTriggerAnAutomaticRequestLoop()
     {
         var handler = new Handler("{}", HttpStatusCode.TooManyRequests);
-        var service = new GifSearchService(new AppSettings { GifApiKey = "test-key" }, new HttpClient(handler));
+        var service = new GifSearchService(new AppSettings { GifProvider = "KLIPY", GifApiKey = "test-key" }, new HttpClient(handler));
         await Assert.ThrowsAsync<GifProviderException>(() => service.SearchAsync("", 1, default));
         await Assert.ThrowsAsync<GifProviderException>(() => service.SearchAsync("different", 1, default));
         Assert.Equal(1, handler.Calls);
@@ -42,7 +42,7 @@ public sealed class GifSearchTests
     [Fact]
     public async Task NoKeyStillAllowsDirectGifLinksAndFavoritesStoreIdsOnly()
     {
-        var settings = new Settings();
+        var settings = new Settings { Value = new AppSettings { GifProvider = "KLIPY" } };
         var service = new GifSearchService(settings.Load(), new HttpClient(new Handler(Response)));
         using var model = new GifPickerViewModel(service, settings);
         await model.OpenAsync(); Assert.False(model.Busy); Assert.Contains("Paste", model.Status);
@@ -61,6 +61,40 @@ public sealed class GifSearchTests
         var pending = model.OpenAsync(); model.Suspend(); service.Pending.SetResult(new([new("KLIPY", "one", "One", "https://static.klipy.com/one.gif", "https://static.klipy.com/one.gif")], false));
         await pending; Assert.Empty(model.Items); Assert.False(model.Busy); Assert.True(service.Token.IsCancellationRequested);
     }
+    [Fact]
+    public async Task TenorSearchesWithoutAKeyAndUsesItsPublicCatalog()
+    {
+        var handler = new Handler(TenorPage("42"));
+        var service = new GifSearchService(new AppSettings(), new HttpClient(handler));
+        Assert.True(service.IsConfigured); Assert.Equal("TENOR", service.Provider);
+        var results = await service.SearchAsync("hi there", 1, default);
+        Assert.Equal("tenor.com", handler.Url!.Host);
+        Assert.Equal("/search/hi+there-gifs", handler.Url.AbsolutePath);
+        var gif = Assert.Single(results.Items);
+        Assert.Equal("TENOR", gif.Provider); Assert.Equal("42", gif.Id); Assert.Equal("a cat waves", gif.Title);
+        Assert.Equal("https://media.tenor.com/abc/tiny.gif", gif.PreviewUrl);
+        Assert.Equal("https://tenor.com/view/hello-gif-42", gif.ShareUrl);
+        Assert.False(results.HasMore);
+    }
+    [Fact]
+    public async Task TenorFavoritesResolveThroughThePublicViewPage()
+    {
+        var handler = new Handler("<html><script id=\"store-cache\" type=\"text/x-cache\">{\"gifs\":{\"byId\":{\"42\":{\"results\":[{\"id\":\"42\",\"content_description\":\"a cat waves\",\"itemurl\":\"https://tenor.com/view/hello-gif-42\",\"media_formats\":{\"tinygif\":{\"url\":\"https://media.tenor.com/abc/tiny.gif\"}}}]}}}}</script></html>");
+        var service = new GifSearchService(new AppSettings(), new HttpClient(handler));
+        var results = await service.FavoritesAsync(["42"], default);
+        var gif = Assert.Single(results.Items);
+        Assert.Equal("42", gif.Id); Assert.Equal("https://tenor.com/view/hello-gif-42", gif.ShareUrl);
+        Assert.Equal("/view/42", handler.Url!.AbsolutePath);
+    }
+    [Fact]
+    public async Task TenorPagesWithoutCatalogDataShowNoResultsInsteadOfFailing()
+    {
+        var service = new GifSearchService(new AppSettings(), new HttpClient(new Handler("<html>no catalog</html>")));
+        Assert.Empty((await service.SearchAsync("", 1, default)).Items);
+    }
+    private static string TenorPage(string id) =>
+        "<html><script id=\"store-cache\" type=\"text/x-cache\">{\"universal\":{\"search\":{\"hi there-low-all\":{\"results\":[{\"id\":\""
+        + id + "\",\"content_description\":\"a cat waves\",\"itemurl\":\"https://tenor.com/view/hello-gif-42\",\"media_formats\":{\"tinygif\":{\"url\":\"https://media.tenor.com/abc/tiny.gif\"},\"gif\":{\"url\":\"https://media1.tenor.com/m/big.gif\"}}}]}}}}</script></html>";
     private sealed class Handler(string body, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
     {
         public Uri? Url; public int Calls;

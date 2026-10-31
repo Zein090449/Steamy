@@ -15,6 +15,7 @@ public sealed partial class DiscordFriendsViewModel
     private static string MessageConversation(DiscordChatMessage message) => message.LobbyId != 0 ? "party:" + message.LobbyId : "friend:" + message.PeerId;
     private async Task SendMessageAsync()
     {
+        if (_editingMessage is { } editing) { await SaveEditAsync(editing); return; }
         if (_chat is null || ConversationId == 0 || _sendingConversations.Contains(ConversationKey) || MessageDraft.Trim().Length is 0 or > 2000) return;
         var nonce = Guid.NewGuid().ToString("N"); var id = ConversationId; var party = _partyChat;
         var message = new DiscordChatMessage(ulong.MaxValue - (ulong)Interlocked.Increment(ref _localMessageId), _discord.Snapshot.Profile?.Id ?? 0, party ? 0 : id, party ? id : 0, 0,

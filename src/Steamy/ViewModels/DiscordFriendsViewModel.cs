@@ -11,24 +11,29 @@ namespace Steamy.ViewModels;
 public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposable
 {
     private readonly IDiscordSocialService _discord;
+    private readonly ISettingsService _settingsService;
     private readonly AppSettings _settings;
+    private readonly IDiscordConversationStore _conversations;
     private readonly SynchronizationContext? _context = SynchronizationContext.Current;
     private CancellationTokenSource? _operation;
     private bool _isBusy;
     private bool _isError;
     private string _message = "";
     private string _search = "";
-    private string _filter = "Friends";
+    private string _filter = "All";
     private string _newFriend = "";
     private bool _wasConnected;
     private Task? _initialization;
     private bool _isRestoring;
     private int _refreshQueued;
+    private bool _summariesLoaded;
+    private Task? _summarySync;
+    private int _summariesGeneration;
     internal Func<TimeSpan, CancellationToken, Task> ReconnectDelay = Task.Delay;
     public bool IsRestoring { get => _isRestoring; private set { if (SetProperty(ref _isRestoring, value)) { OnPropertyChanged(nameof(FriendSummary)); OnPropertyChanged(nameof(ConnectionState)); OnPropertyChanged(nameof(ProfileLabel)); } } }
     public string ConnectionState => IsConnected ? "Connected to Discord" : IsRestoring ? "Connecting to Discord…" : "Discord disconnected";
     public ObservableCollection<DiscordFriend> Friends { get; } = [];
-    public string[] Filters { get; } = ["Friends", "Requests", "Blocked"];
+    public string[] Filters { get; } = ["All", "DMs", "Groups", "Unread"];
     public IAsyncRelayCommand ConnectCommand { get; }
     public IAsyncRelayCommand DisconnectCommand { get; }
     public IAsyncRelayCommand SendRequestCommand { get; }
@@ -40,15 +45,22 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
     public IAsyncRelayCommand<DiscordFriend> UnblockCommand { get; }
     public IRelayCommand CancelCommand { get; }
     public IRelayCommand RefreshCommand { get; }
+    public IRelayCommand<DiscordFriend> MarkFriendReadCommand { get; }
+    public IRelayCommand<DiscordFriend> CopyUserIdCommand { get; }
 
     public DiscordFriendsViewModel(IDiscordSocialService discord, ISettingsService settings,
-        IAppDataStore? store = null, IGameLaunchService? gameLaunch = null, NotificationCenterViewModel? notifications = null, IArtworkService? artwork = null, DiscordVoiceViewModel? voice = null)
+        IAppDataStore? store = null, IGameLaunchService? gameLaunch = null, NotificationCenterViewModel? notifications = null, IArtworkService? artwork = null, DiscordVoiceViewModel? voice = null,
+        IDiscordConversationStore? conversations = null)
     {
         _discord = discord;
         Voice = voice;
+        _settingsService = settings;
         _settings = settings.Load();
+        _conversations = conversations ?? new DiscordConversationStore();
+        _conversations.Changed += ConversationsChanged;
         _discord.Changed += DiscordChanged;
         _settings.PropertyChanged += SettingsChanged;
+        MainWindow.EasterEggsChanged += (_, _) => OnPropertyChanged(nameof(SecretBadgeVisibility));
         ConnectCommand = new AsyncRelayCommand(() => RunAsync(ConnectOrResumeAsync, "Connected to Discord.", "Connecting to Discord…"), () => CanConnect);
         DisconnectCommand = new AsyncRelayCommand(() => RunAsync(_discord.DisconnectAsync, "Disconnected. Your saved Discord session was removed."), () => (IsConnected || _discord.HasSavedSession) && !IsBusy);
         SendRequestCommand = new AsyncRelayCommand(SendRequestAsync, () => IsConnected && !IsBusy && !string.IsNullOrWhiteSpace(NewFriend));
@@ -60,6 +72,18 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
         UnblockCommand = FriendCommand(DiscordFriendAction.Unblock);
         CancelCommand = new RelayCommand(() => _operation?.Cancel(), () => IsBusy);
         RefreshCommand = new RelayCommand(Refresh);
+        MarkFriendReadCommand = new RelayCommand<DiscordFriend>(friend =>
+        {
+            if (friend is null) return;
+            if (_conversations.Get(friend.Id) is { } entry) _conversations.MarkRead(friend.Id, entry.LastMessageId);
+            _notifications?.ResolveSocialTarget(SteamyNotificationKind.Message, friend.Id);
+        });
+        CopyUserIdCommand = new RelayCommand<DiscordFriend>(friend =>
+        {
+            if (friend is null) return;
+            try { Clipboard.SetText(friend.Id.ToString()); StatusMessage = "Copied " + friend.DisplayName + "'s user ID."; }
+            catch (System.Runtime.InteropServices.ExternalException) { StatusMessage = "The clipboard is busy. Try copying again."; }
+        });
         _socialArtwork = artwork;
         InitializeWorkspace(store, gameLaunch);
         InitializeNotifications(notifications);
@@ -82,12 +106,22 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
         ? $"{_discord.Snapshot.Relationships.Count(f => f.IsFriend)} friends · {_discord.Snapshot.Relationships.Count(f => f.IsOnline)} online · {_discord.Snapshot.Relationships.Count(f => f.IsIncoming)} incoming"
         : IsRestoring ? "Connecting your saved Discord account…" : "Your friends, messages and next session.";
     public string EmptyTitle => !IsConnected ? "Bring your people along" : SearchText.Length > 0 ? "No matching people"
-        : SelectedFilter == "Requests" ? "All caught up" : SelectedFilter == "Blocked" ? "No blocked users" : "Your next teammate starts here";
+        : SelectedFilter switch
+        {
+            "DMs" => "No messages yet",
+            "Groups" => "No group chats yet",
+            "Unread" => "No unread messages",
+            _ => "Your next teammate starts here"
+        };
     public string EmptyDescription => !IsConnected ? "Find each other through Discord, with or without a Steam account."
         : SearchText.Length > 0 ? "Try another username or display name."
-        : SelectedFilter == "Requests" ? "New incoming and outgoing friend requests will appear here."
-        : SelectedFilter == "Blocked" ? "People you block on Discord will appear here."
-        : "Add someone by their Discord username or user ID.";
+        : SelectedFilter switch
+        {
+            "DMs" => "Start a conversation and it will show up here, newest first.",
+            "Groups" => "Group DMs aren't exposed by Discord's Social SDK yet. Parties already cover group chat and voice.",
+            "Unread" => "Messages you haven't opened yet will show up here.",
+            _ => "Add someone by their Discord username or user ID."
+        };
     public Visibility ConnectedVisibility => IsConnected ? Visibility.Visible : Visibility.Collapsed;
     public Visibility DisconnectedVisibility => IsConnected ? Visibility.Collapsed : Visibility.Visible;
     public Visibility DisconnectVisibility => IsConnected || _discord.HasSavedSession ? Visibility.Visible : Visibility.Collapsed;
@@ -96,6 +130,20 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
     public string SearchText { get => _search; set { if (SetProperty(ref _search, value)) Refresh(); } }
     public string SelectedFilter { get => _filter; set { if (SetProperty(ref _filter, value)) Refresh(); } }
     public string NewFriend { get => _newFriend; set { if (SetProperty(ref _newFriend, value)) SendRequestCommand.NotifyCanExecuteChanged(); } }
+    public string[] RecentEmojis => _settings.RecentEmojis;
+    public void RememberEmoji(string emoji)
+    {
+        if (emoji.Length == 0) return;
+        var recents = _settings.RecentEmojis.Where(item => item != emoji).Take(23).ToArray();
+        _settings.RecentEmojis = [emoji, .. recents];
+        OnPropertyChanged(nameof(RecentEmojis));
+        _ = _settingsService.SaveAsync(_settings);
+    }
+    private int _conversationEpoch;
+    public int ConversationEpoch => _conversationEpoch;
+    private readonly Dictionary<ulong, DiscordFriend> _directPeers = [];
+    private readonly HashSet<ulong> _resolvingPeers = [];
+    public Visibility SecretBadgeVisibility => _settings.EasterEggs.Contains("konami", StringComparer.Ordinal) ? Visibility.Visible : Visibility.Collapsed;
 
     public Task InitializeAsync()
     {
@@ -186,21 +234,118 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
     }
     private void SettingsChanged(object? sender, PropertyChangedEventArgs args)
     {
+        if (args.PropertyName == nameof(AppSettings.EasterEggs)) OnPropertyChanged(nameof(SecretBadgeVisibility));
         if (args.PropertyName == nameof(AppSettings.DiscordAutoConnect)) { if (!_settings.DiscordAutoConnect && IsRestoring) _operation?.Cancel(); return; }
         if (args.PropertyName != nameof(AppSettings.DiscordApplicationId)) return;
         if (!IsBusy && !IsConnected) StatusMessage = _discord.AvailabilityMessage;
         RefreshCommands();
     }
+    private void ConversationsChanged(object? sender, EventArgs args)
+    {
+        _conversationEpoch++;
+        void Update()
+        {
+            OnPropertyChanged(nameof(ConversationEpoch));
+            OnPropertyChanged(nameof(UnreadTotal));
+            Refresh();
+        }
+        if (_context is not null && SynchronizationContext.Current != _context)
+        {
+            if (Interlocked.Exchange(ref _refreshQueued, 1) == 0)
+                _context.Post(_ => { Interlocked.Exchange(ref _refreshQueued, 0); Update(); }, null);
+        }
+        else Update();
+    }
+    private Task SyncConversationSummariesAsync()
+    {
+        // Coalesce page-show, focus and refresh triggers: Discord answers one summary subscription at a time.
+        if (_summarySync is { IsCompleted: false } running) return running;
+        return _summarySync = SyncConversationSummariesCoreAsync();
+    }
+    private async Task SyncConversationSummariesCoreAsync()
+    {
+        var generation = _summariesGeneration;
+        try
+        {
+            if (_chat is null || !HasCommunicationPermission) { _summariesLoaded = false; return; }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var summaries = await _chat.GetMessageSummariesAsync(timeout.Token).ConfigureAwait(false);
+            if (generation != _summariesGeneration) return;
+            _conversations.ApplySummaries(summaries);
+            _summariesLoaded = true;
+            UpgradeAfterFreshSummaries();
+        }
+        catch (Exception)
+        {
+            // The SDK may refuse the subscription without calling back; never let that wedge the DM list.
+            if (generation == _summariesGeneration) _summariesLoaded = false;
+        }
+        finally
+        {
+            if (generation == _summariesGeneration) _summarySync = null;
+        }
+    }
+    public DiscordConversationEntry? Conversation(ulong peerId) => _conversations.Get(peerId);
+    public int UnreadTotal => _conversations.Peers.Sum(_conversations.Unread);
+    private IEnumerable<DiscordFriend> People() => (_discord.Snapshot ?? DiscordSnapshot.Disconnected)
+        .Relationships.Where(friend => friend.IsFriend || friend.IsIncoming || friend.IsOutgoing).Concat(_directPeers.Values);
+    public int FilterCount(string filter) => filter switch
+    {
+        "DMs" => People().Count(friend => _conversations.Get(friend.Id) is { LastMessageId: > 0 }),
+        "Groups" => 0,
+        "Unread" => People().Count(friend => _conversations.Unread(friend.Id) > 0),
+        _ => People().Count()
+    };
+    // Discord allows DMs with people who aren't friends; the SDK exposes no DM-channel list, so the
+    // local conversation store decides which non-friend peers appear, and GetUser fills in names.
+    private void ResolveDirectPeers()
+    {
+        if (!IsConnected) { _directPeers.Clear(); _resolvingPeers.Clear(); return; }
+        var friends = (_discord.Snapshot ?? DiscordSnapshot.Disconnected).Relationships
+            .Where(friend => friend.IsFriend || friend.IsIncoming || friend.IsOutgoing).Select(friend => friend.Id).ToHashSet();
+        var peers = _conversations.Peers.Where(id => !friends.Contains(id)).ToArray();
+        foreach (var id in _directPeers.Keys.Where(id => !peers.Contains(id)).ToArray()) _directPeers.Remove(id);
+        foreach (var id in peers)
+            if (!_directPeers.ContainsKey(id) && _resolvingPeers.Add(id)) _ = ResolveDirectPeerAsync(id);
+    }
+    private async Task ResolveDirectPeerAsync(ulong id)
+    {
+        try
+        {
+            var directory = _discord as IDiscordUserDirectory;
+            var profile = directory is null ? null : await Task.Run(() => directory.GetUser(id));
+            _resolvingPeers.Remove(id);
+            if (_directPeers.ContainsKey(id)) return;
+            _directPeers[id] = new(profile ?? new DiscordProfile(id, "", "Unknown user", null), DiscordRelationshipKind.Direct, DiscordPresence.Offline);
+            Refresh();
+        }
+        catch { _resolvingPeers.Remove(id); }
+    }
     private void Refresh()
     {
         var snapshot = _discord.Snapshot ?? DiscordSnapshot.Disconnected;
         _wasConnected = snapshot.IsConnected;
-        var visible = snapshot.Relationships.Where(f => SelectedFilter switch
-        { "Requests" => f.IsIncoming || f.IsOutgoing, "Blocked" => f.IsBlocked, _ => f.IsFriend });
+        if (IsConnected && !_summariesLoaded)
+        {
+            _summariesLoaded = true;
+            _ = SyncConversationSummariesAsync();
+        }
+        ResolveDirectPeers();
+        var visible = People().Where(f => SelectedFilter switch
+        {
+            "DMs" => _conversations.Get(f.Id) is { LastMessageId: > 0 },
+            "Groups" => false,
+            "Unread" => _conversations.Unread(f.Id) > 0,
+            _ => true
+        });
         var query = SearchText.Trim();
         if (query.Length > 0) visible = visible.Where(f => f.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase)
             || f.Username.Contains(query, StringComparison.OrdinalIgnoreCase) || f.Id.ToString().Contains(query, StringComparison.Ordinal));
-        var next = visible.ToArray();
+        // DMs first, newest message on top; the rest alphabetically. Presence never reorders the list.
+        var next = visible
+            .OrderByDescending(f => _conversations.Get(f.Id) is { } entry ? entry.LastMessageAt : long.MinValue)
+            .ThenBy(f => f.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
         // Keep existing rows/selection in place when a presence update arrives.
         _updatingFriends = true;
         try
@@ -237,5 +382,5 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
             CancelRequestCommand, RemoveCommand, BlockCommand, UnblockCommand, CancelCommand }) command?.NotifyCanExecuteChanged();
         RefreshWorkspaceCommands(); OnPropertyChanged(nameof(CanChooseGame));
     }
-    public void Dispose() { DisposeNotifications(); DisposeWorkspace(); _operation?.Cancel(); _discord.Changed -= DiscordChanged; _settings.PropertyChanged -= SettingsChanged; }
+    public void Dispose() { DisposeNotifications(); DisposeWorkspace(); _operation?.Cancel(); _conversations.Changed -= ConversationsChanged; _discord.Changed -= DiscordChanged; _settings.PropertyChanged -= SettingsChanged; }
 }

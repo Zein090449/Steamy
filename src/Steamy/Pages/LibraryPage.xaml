@@ -30,6 +30,7 @@
 
     <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
 
+
     <local:EnumToShowBoolConverter x:Key="EnumTo_ShowBoolConverter" />
 
     <local:GenreNameConverter x:Key="GenreNameConverter" />
@@ -440,7 +441,7 @@
 
         </ControlTemplate></ItemsControl.Template>
 
-        <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:VirtualizingGamePanel MinItemWidth="184" MaxColumns="6" Spacing="24" RowSpacing="30" CoverRatio="1.42" FooterHeight="84" LeadingHeight="64" TrailingHeight="100" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:VirtualizingGamePanel MinItemWidth="{Binding CardWidth}" MaxColumns="{Binding CardColumns}" Spacing="24" RowSpacing="30" CoverRatio="1.42" FooterHeight="84" LeadingHeight="64" TrailingHeight="100" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
 
         <ItemsControl.ItemTemplate><DataTemplate>
 
@@ -636,6 +637,8 @@
                 </StackPanel></controls:FilterFlyout.FilterContent>
 
               </controls:FilterFlyout>
+
+              <ui:Button x:Name="CardSizeToggle" Style="{StaticResource IconButtonStyle}" Appearance="Transparent" Width="40" Height="40" MinHeight="40" CornerRadius="20" Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" Foreground="{DynamicResource TextSecondaryBrush}" BorderThickness="1" Margin="8,0,0,0" Click="CardSizeToggle_Click" AutomationProperties.Name="Card size" Icon="{ui:SymbolIcon Apps24}" ToolTip="Switch to compact cards" />
 
               <ui:Button Style="{StaticResource IconButtonStyle}" Icon="{ui:SymbolIcon ArrowClockwise24}" Command="{Binding RefreshCatalogCommand}" Appearance="Transparent" Width="40" Height="40" MinHeight="40" CornerRadius="20" Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" Foreground="{DynamicResource TextSecondaryBrush}" BorderThickness="1" Margin="8,0,0,0" ToolTip="Refresh library" AutomationProperties.Name="Refresh library" />
 

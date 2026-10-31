@@ -42,7 +42,7 @@ public static class AsyncArtwork
             image.Loaded += (_, _) => { _viewport?.Dispose(); _viewport = ArtworkViewport.Observe(image, ViewportChanged); Refresh(); };
             image.Unloaded += (_, _) => { _viewport?.Dispose(); _viewport = null; Release(); };
             image.IsVisibleChanged += (_, _) => { if (image.IsVisible) Refresh(); else Release(); };
-            image.SizeChanged += (_, _) => { if (image.IsVisible && image.ActualWidth * VisualTreeHelper.GetDpi(image).DpiScaleX > _requestedWidth * 1.2) { _resize.Stop(); _resize.Start(); } };
+            image.SizeChanged += (_, _) => { if (image.IsVisible && (_request is null && _image.Source is null && image.ActualWidth > 0 || image.ActualWidth * VisualTreeHelper.GetDpi(image).DpiScaleX > _requestedWidth * 1.2)) { _resize.Stop(); _resize.Start(); } };
             _resize.Tick += (_, _) => { _resize.Stop(); if (_image.IsVisible) Refresh(); };
         }
         private void ViewportChanged()
@@ -56,8 +56,9 @@ public static class AsyncArtwork
         internal async void Refresh()
         {
             Release();
-            if (ArtworkViewport.Priority(_image) is not { } priority) return;
-            _priority = priority;
+            var priority = ArtworkViewport.Priority(_image);
+            if (priority is not { } current) return;
+            _priority = current;
             if (GetUrl(_image) is ImageSource source) { _image.Source = source; return; }
             if (!Uri.TryCreate(GetUrl(_image)?.ToString(), UriKind.Absolute, out var uri)) return;
             if (GetPrivate(_image) && !ChatMediaPolicy.IsImageUri(uri)) return;
@@ -69,7 +70,7 @@ public static class AsyncArtwork
                 width = Math.Min(2560, (width + 63) / 64 * 64); _requestedWidth = width;
                 var height = GetHeight(_image) > 0 ? Math.Clamp((int)Math.Ceiling(GetHeight(_image) * dpi.DpiScaleY), 1, 2560) : 0;
                 var pipeline = App.Services.GetService<IImagePipeline>() ?? ImagePipeline.Shared;
-                var result = await pipeline.LoadAsync(new ImageRequest(uri, width, height, Priority: priority,
+                var result = await pipeline.LoadAsync(new ImageRequest(uri, width, height, Priority: current,
                     CachePolicy: GetPrivate(_image) ? ImageCachePolicy.MemoryOnly : ImageCachePolicy.PublicArtwork), token);
                 if (_request == request && !token.IsCancellationRequested) _image.Source = result;
             }

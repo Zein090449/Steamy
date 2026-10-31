@@ -14,21 +14,29 @@ public sealed partial class DiscordFriendsViewModel
     private void InitializeNotifications(NotificationCenterViewModel? notifications)
     { _notifications = notifications; if (_notifications is not null) _notifications.Changed += NotificationsChanged; }
     private void NotificationsChanged(object? sender, EventArgs args) { _notificationEpoch++; OnPropertyChanged(nameof(NotificationEpoch)); }
-    public int UnreadMessages(ulong peerId) => _notifications?.ConversationUnreadCount(peerId) ?? 0;
+    public int UnreadMessages(ulong peerId) => _conversations.Unread(peerId);
     public void OpenFriendRequests()
-    { SaveDraft(); _selectedFriend = null; _partyChat = false; ClearConversation(); OnPropertyChanged(nameof(SelectedFriend)); SelectedFilter = "Requests"; SearchText = ""; RefreshWorkspace(); }
-    public void SetWindowActive(bool active) { _windowActive = active; _chat?.SetShowingChat(active && _chatVisible && ConversationVisibility == System.Windows.Visibility.Visible); MarkCurrentConversationRead(); }
+    { SaveDraft(); _selectedFriend = null; _partyChat = false; ClearConversation(); OnPropertyChanged(nameof(SelectedFriend)); SelectedFilter = "All"; SearchText = ""; RefreshWorkspace(); }
+    public void SetWindowActive(bool active) { _windowActive = active; if (active) _ = SyncConversationSummariesAsync(); _chat?.SetShowingChat(active && _chatVisible && ConversationVisibility == System.Windows.Visibility.Visible); MarkCurrentConversationRead(); }
     private void MarkCurrentConversationRead()
-    { if (_windowActive && _chatVisible && ConversationId != 0) _notifications?.MarkConversationRead(_partyChat ? 0 : ConversationId, _partyChat ? ConversationId : 0); }
+    {
+        if (!_windowActive || !_chatVisible || ConversationId == 0) return;
+        var lastId = Messages.Count > 0 ? Messages[^1].Id : _conversations.Get(_partyChat ? 0 : ConversationId)?.LastMessageId ?? 0;
+        _notifications?.MarkConversationRead(_partyChat ? 0 : ConversationId, _partyChat ? ConversationId : 0);
+        if (!_partyChat) _conversations.MarkRead(ConversationId, lastId);
+    }
     private void NotifyIncomingMessage(DiscordChatMessage message)
     {
         if (_notifications is null || message.IsOwn || message.IsEdited) return;
         var current = message.LobbyId > 0 ? _partyChat && message.LobbyId == ConversationId : !_partyChat && message.PeerId == ConversationId;
         if (current && _chatVisible && _windowActive) { MarkCurrentConversationRead(); return; }
+        if (message.LobbyId == 0 && _conversations.Get(message.PeerId) is { } entry && message.Id <= entry.ReadMessageId) return;
         var author = message.AuthorName.Length > 0 ? message.AuthorName : _discord.Snapshot.Relationships.FirstOrDefault(friend => friend.Id == message.AuthorId)?.DisplayName ?? "New message";
+        var avatar = _discord.Snapshot.Relationships.FirstOrDefault(friend => friend.Id == message.AuthorId)?.AvatarUrl
+            ?? (_discord as IDiscordUserDirectory)?.GetUser(message.AuthorId)?.AvatarUrl;
         var body = message.Content.Length == 0 ? message.MediaLabel : message.ImageUrl is not null && message.DisplayContent.Length == 0 ? "Sent an image" : message.Content;
         _notifications.Publish(new("social:message:" + message.Id, SteamyNotificationKind.Message, message.LobbyId > 0 ? "Party chat · " + author : author,
-            body, message.PeerId, message.LobbyId, AvatarUrl: _discord.Snapshot.Relationships.FirstOrDefault(friend => friend.Id == message.AuthorId)?.AvatarUrl));
+            body, message.PeerId, message.LobbyId, AvatarUrl: avatar));
     }
     private void RefreshSocialNotifications()
     {

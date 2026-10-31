@@ -3,15 +3,30 @@ using System.Globalization;
 namespace Steamy.Services;
 
 public enum DiscordDeliveryState { Sent, Sending, Failed }
+public enum DiscordPresence { Online, Idle, Dnd, Streaming, Offline, Invisible, Unknown }
+public static class DiscordPresenceExtensions
+{
+    public static string Label(this DiscordPresence presence) => presence switch
+    {
+        DiscordPresence.Online => "Online", DiscordPresence.Idle => "Idle", DiscordPresence.Dnd => "Do not disturb",
+        DiscordPresence.Streaming => "Streaming", DiscordPresence.Invisible => "Invisible", _ => "Offline"
+    };
+    public static bool CountsOnline(this DiscordPresence presence) => presence is DiscordPresence.Online or DiscordPresence.Idle or DiscordPresence.Dnd or DiscordPresence.Streaming;
+}
 public interface IDiscordMessageDelivery
 {
     Task<DiscordChatMessage> SendWithNonceAsync(ulong peerId, bool party, string content, string nonce, CancellationToken token = default);
 }
 public sealed class DiscordSendRejectedException(string message) : DiscordSocialException(message);
+public sealed record DiscordMessageSummary(ulong UserId, ulong LastMessageId);
 
 public sealed record DiscordChatMessage(ulong Id, ulong AuthorId, ulong PeerId, ulong LobbyId, ulong ChannelId,
-    string Content, DateTimeOffset SentAt, bool IsOwn, bool HasAdditionalContent, bool IsEdited, string AuthorName = "", string AdditionalTitle = "", string AdditionalKind = "", int AdditionalCount = 0)
+    string Content, DateTimeOffset SentAt, bool IsOwn, bool HasAdditionalContent, bool IsEdited, string AuthorName = "", string AdditionalTitle = "", string AdditionalKind = "", int AdditionalCount = 0,
+    string? AuthorAvatarUrl = null)
 {
+    public bool IsSystem { get; init; }
+    // Header visibility is recomputed by the conversation (grouping consecutive messages from one author).
+    public bool ShowHeader { get; init; } = true;
     public string ClientNonce { get; init; } = "";
     public DiscordDeliveryState DeliveryState { get; init; } = DiscordDeliveryState.Sent;
     public string DeliveryError { get; init; } = "";
@@ -20,15 +35,67 @@ public sealed record DiscordChatMessage(ulong Id, ulong AuthorId, ulong PeerId, 
     public bool HasVoiceInvite => VoiceInvite is not null;
     public bool NeedsDeliveryAction => DeliveryState == DiscordDeliveryState.Failed;
     public string DeliveryAction => CanResend ? "Retry" : "Check delivery";
-    public string DayLabel => SentAt.LocalDateTime.Date == DateTime.Today ? "Today" : SentAt.LocalDateTime.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : SentAt.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture);
+    public string DayLabel => SocialTime.Day(SentAt.LocalDateTime.Date);
     public DateTime DayKey => SentAt.LocalDateTime.Date;
-    public string? ImageUrl => ChatMediaPolicy.ImageUrl(Content);
-    public string DisplayContent => Content.Trim() == ImageUrl ? "" : Content;
-    public string MediaLabel => AdditionalTitle.Length > 0 ? AdditionalTitle : AdditionalCount > 1 ? $"{AdditionalCount} attachments" : AdditionalKind switch
-    { "Poll" => "Discord poll", "VoiceMessage" => "Voice message", "Thread" => "Discord thread", "Embed" => "Shared content", "Sticker" => "Sticker", "Attachment" => "Attachment", _ => "Shared Discord content" };
-    public string TimeLabel => (!IsOwn && AuthorName.Length > 0 ? AuthorName + " · " : "")
-        + SentAt.ToLocalTime().ToString("HH:mm", CultureInfo.CurrentCulture) + (IsEdited ? " · edited" : "")
+    public string RawContent { get; init; } = "";
+    public string? ImageUrl => ChatMediaPolicy.ImageUrl(Content) ?? ChatMediaPolicy.ImageUrl(RawContent);
+    public string DisplayContent
+    {
+        get
+        {
+            var text = Content.Trim();
+            if (text.Length == 0) return Content;
+            if (text == ImageUrl || text == StickerLink) return "";
+            // A message that is only a sticker link is fully represented by the sticker tile.
+            if (StickerLink is { } sticker && ChatMediaPolicy.IsOnlyMarkdownLinkTo(text, sticker)) return "";
+            return Content;
+        }
+    }
+    public bool HasText => DisplayContent.Length > 0;
+    public string? StickerLink => ChatMediaPolicy.StickerUrl(Content) ?? ChatMediaPolicy.StickerUrl(RawContent);
+    public bool HasSticker => StickerLink is not null;
+    public string StickerName
+    {
+        get
+        {
+            var link = StickerLink;
+            if (link is null) return "Sticker";
+            var text = ChatMediaPolicy.MarkdownText(Content, link) ?? ChatMediaPolicy.StickerQueryName(link);
+            if (string.IsNullOrWhiteSpace(text)) return "Sticker";
+            text = text.Replace('+', ' ');
+            try { text = Uri.UnescapeDataString(text); } catch (UriFormatException) { }
+            return text.Length > 80 ? text[..80] : text;
+        }
+    }
+    // The Social SDK hands real Discord stickers over as an empty message whose only trace is
+    // AdditionalContent { Type = Other, Count = 1 } — no sticker id, name or asset is exposed.
+    public bool IsStickerLike => HasAdditionalContent && (AdditionalKind == "Sticker"
+        || AdditionalKind == "Other" && AdditionalTitle.Length == 0 && AdditionalCount <= 1
+           && Content.Trim().Length == 0 && RawContent.Trim().Length == 0);
+    public string MediaLabel => AdditionalTitle.Length > 0 ? AdditionalTitle : IsStickerLike ? "Discord sticker" : AdditionalCount > 1 ? $"{AdditionalCount} attachments" : AdditionalKind switch
+    { "Poll" => "Discord poll", "VoiceMessage" => "Voice message", "Thread" => "Discord thread", "Embed" => "Shared content", "Sticker" => "Discord sticker", "Attachment" => "Attachment", _ => "Discord content" };
+    // Discord attaches a link-preview embed to GIF/media links; when that same link renders inline the card would duplicate it.
+    public bool ShowMediaCard => HasAdditionalContent && !HasSticker && !(ImageUrl is not null && AdditionalKind is "Embed" or "");
+    public string AuthorLabel => IsOwn ? "You" : AuthorName.Length > 0 ? AuthorName : "Discord user";
+    public string AuthorInitial => char.ToUpperInvariant(AuthorLabel[0]).ToString();
+    // Only own, confirmed direct messages can be changed: the Social SDK exposes no lobby edit or delete.
+    public bool CanManage => IsOwn && !IsSystem && LobbyId == 0 && !HasVoiceInvite && DeliveryState == DiscordDeliveryState.Sent && Id > 0;
+    public string TimeLabel => SocialTime.Clock(SentAt) + (IsEdited ? " (edited)" : "")
         + (IsOwn ? DeliveryState switch { DiscordDeliveryState.Sending => " · Sending…", DiscordDeliveryState.Failed => CanResend ? " · Failed" : " · Not confirmed", _ => " · Sent" } : "");
+    public string HoverTime => SocialTime.Clock(SentAt) + " · " + SocialTime.DayLong(SentAt.LocalDateTime);
+    public string PreviewLabel
+    {
+        get
+        {
+            if (IsSystem) return Content;
+            if (Content.Trim().Equals(ImageUrl, StringComparison.OrdinalIgnoreCase)) return "GIF";
+            if (IsStickerLike || HasSticker) return "Sticker";
+            if (ImageUrl is not null) return "Photo";
+            if (HasAdditionalContent && AdditionalKind is not ("" or "Other")) return MediaLabel;
+            var text = Content.Replace('\n', ' ').Trim();
+            return text.Length == 0 ? "Message" : text.Length > 64 ? text[..64].TrimEnd() + "…" : text;
+        }
+    }
 }
 public interface IDiscordMessageNavigation
 {
@@ -46,7 +113,10 @@ public interface IDiscordChatService
     IReadOnlyList<DiscordPartyInvite> Invites { get; }
     event EventHandler<DiscordMessageChange>? MessageChanged;
     Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token = default);
+    Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token = default);
     Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token = default);
+    Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token = default);
+    Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token = default);
     void SetShowingChat(bool showing);
     Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token = default);
     Task InviteToPartyAsync(ulong friendId, CancellationToken token = default);
@@ -61,16 +131,26 @@ internal interface IDiscordCommunicationClient
     IReadOnlyList<DiscordPartyInvite> Invites { get; }
     event EventHandler<DiscordMessageChange>? MessageChanged;
     Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token);
+    Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token);
     Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token);
+    Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token);
+    Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token);
     void SetShowingChat(bool showing);
     Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token);
     Task InviteToPartyAsync(ulong friendId, CancellationToken token);
     Task AcceptPartyInviteAsync(Guid inviteId, CancellationToken token);
     void DismissPartyInvite(Guid inviteId);
     Task LeavePartyAsync(CancellationToken token);
+    DiscordProfile? GetUser(ulong userId);
 }
 
-public sealed partial class DiscordSocialService : IDiscordChatService, IDiscordMessageNavigation, IDiscordMessageDelivery
+/// <summary>Resolves DM peers Discord knows about that aren't on the friends list.</summary>
+internal interface IDiscordUserDirectory
+{
+    DiscordProfile? GetUser(ulong userId);
+}
+
+public sealed partial class DiscordSocialService : IDiscordChatService, IDiscordMessageNavigation, IDiscordMessageDelivery, IDiscordUserDirectory
 {
     public Task<DiscordChatMessage> SendWithNonceAsync(ulong peerId, bool party, string content, string nonce, CancellationToken token = default)
     {
@@ -95,11 +175,32 @@ public sealed partial class DiscordSocialService : IDiscordChatService, IDiscord
 
     public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token = default) =>
         CommunicationOperationAsync((client, ct) => { ValidateConversation(peerId, party); return client.GetMessagesAsync(peerId, party, ct); }, token);
+    public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token = default) =>
+        CommunicationOperationAsync((client, ct) => client.GetMessageSummariesAsync(ct), token);
     public Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token = default)
     {
         var text = content.Trim();
         if (text.Length is 0 or > 2000) throw new ArgumentException("Write a message of up to 2,000 characters.");
         return CommunicationOperationAsync((client, ct) => { ValidateConversation(peerId, party); return client.SendMessageAsync(peerId, party, text, ct); }, token);
+    }
+    public Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token = default)
+    {
+        var text = content.Trim();
+        if (messageId == 0 || text.Length is 0 or > 2000) throw new ArgumentException("Write a message of up to 2,000 characters.");
+        return CommunicationOperationAsync(async (client, ct) =>
+        {
+            ValidateConversation(peerId, false);
+            await client.EditMessageAsync(peerId, messageId, text, ct); return true;
+        }, token);
+    }
+    public Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token = default)
+    {
+        if (messageId == 0) throw new ArgumentException("This message can't be deleted.");
+        return CommunicationOperationAsync(async (client, ct) =>
+        {
+            ValidateConversation(peerId, false);
+            await client.DeleteMessageAsync(peerId, messageId, ct); return true;
+        }, token);
     }
     public Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token = default)
     {
@@ -125,9 +226,13 @@ public sealed partial class DiscordSocialService : IDiscordChatService, IDiscord
 
     private void ValidateConversation(ulong peerId, bool party)
     {
-        if (party ? Party?.Id != peerId : !Snapshot.Relationships.Any(friend => friend.Id == peerId && friend.IsFriend))
+        // Non-friend DM peers stay valid while a conversation with them exists locally.
+        if (party ? Party?.Id != peerId : !Snapshot.Relationships.Any(friend => friend.Id == peerId && friend.IsFriend)
+            && _conversations?.Get(peerId) is null)
             throw new InvalidOperationException(party ? "This party has ended. Join or create another party." : "Choose a current Discord friend to chat with.");
     }
+    public DiscordProfile? GetUser(ulong userId) => userId > 0 && _client is IDiscordCommunicationClient communication && Snapshot.IsConnected
+        ? communication.GetUser(userId) : null;
     private Task<T> CommunicationOperationAsync<T>(Func<IDiscordCommunicationClient, CancellationToken, Task<T>> action, CancellationToken token) =>
         ClientOperationAsync((client, ct) => client is IDiscordCommunicationClient communication ? action(communication, ct)
             : throw new InvalidOperationException("Reconnect Discord to enable chat and parties."), true, token);

@@ -12,6 +12,14 @@
       <local:SocialFilterConverter x:Key="FilterEquals" />
       <local:SocialDayConverter x:Key="SocialDay" />
       <local:SocialUnreadConverter x:Key="SocialUnread" />
+      <local:SocialFilterCountConverter x:Key="FilterCount" />
+      <local:SocialConversationPreviewConverter x:Key="ConversationPreview" />
+      <local:SocialConversationTimeConverter x:Key="ConversationTime" />
+      <local:SocialUnreadWeightConverter x:Key="ConversationUnreadWeight" />
+      <local:SocialEqualToVisibilityConverter x:Key="EqualToVis" />
+      <local:SocialMemberSinceConverter x:Key="MemberSince" />
+      <local:SocialPresenceColorConverter x:Key="PresenceColor" />
+      <local:SocialInverseBoolConverter x:Key="InverseBoolToVis" />
       <CollectionViewSource x:Key="Timeline" Source="{Binding Messages}"><CollectionViewSource.GroupDescriptions><PropertyGroupDescription PropertyName="DayKey" /></CollectionViewSource.GroupDescriptions></CollectionViewSource>
       <Style x:Key="FriendRow" TargetType="ListBoxItem">
         <Setter Property="Padding" Value="0" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Cursor" Value="Hand" />
@@ -24,6 +32,29 @@
           </ControlTemplate.Triggers>
         </ControlTemplate></Setter.Value></Setter>
       </Style>
+      <DataTemplate x:Key="ProfileCard">
+        <Border CornerRadius="16" Background="{DynamicResource SocialSolidCardBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" Width="300" ClipToBounds="True">
+          <StackPanel>
+            <Border Height="76" Background="{DynamicResource SocialSolidBannerBrush}" />
+            <Border HorizontalAlignment="Left" Margin="16,-42,0,0" Width="84" Height="84" CornerRadius="42" Background="{DynamicResource SocialSolidCardBrush}">
+              <controls:SocialAvatar Diameter="84" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" Presence="{Binding Presence}" ShowPresence="True" BadgeSurface="{DynamicResource SocialSolidCardBrush}" />
+            </Border>
+            <StackPanel Margin="16,8,16,14">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding DisplayName}" FontSize="19" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                <Border CornerRadius="7" Background="#593695" Padding="6,2" Margin="8,2,0,0" VerticalAlignment="Center" Visibility="{Binding DataContext.SecretBadgeVisibility, Source={x:Reference SocialRoot}}"><TextBlock Text="Secret" FontSize="9.5" FontWeight="SemiBold" Foreground="White" /></Border>
+              </StackPanel>
+              <TextBlock Text="{Binding Username, StringFormat=@{0}}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Status}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding Presence, Converter={StaticResource PresenceColor}}" Margin="0,6,0,0" />
+              <TextBlock Text="{Binding Id, Converter={StaticResource MemberSince}}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,4,0,0" />
+              <WrapPanel Margin="0,12,0,0">                <ui:Button Content="Message" Click="ProfileMessage_Click" Style="{StaticResource SocialPrimaryButton}" Padding="12,7" MinHeight="34" Margin="0,0,8,6" AutomationProperties.Name="Open message composer" />
+                <ui:Button Content="Play together" Command="{Binding DataContext.PlayWithFriendCommand, RelativeSource={RelativeSource AncestorType=Page}}" Style="{StaticResource SocialQuietButton}" Padding="11,6" MinHeight="34" Margin="0,0,8,6" Background="{DynamicResource SurfaceSubtleBrush}" />
+                <ui:Button Content="Invite" Command="{Binding DataContext.InvitePersonCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialQuietButton}" Padding="11,6" MinHeight="34" Margin="0,0,0,6" Background="{DynamicResource SurfaceSubtleBrush}" />
+              </WrapPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </DataTemplate>
     </ResourceDictionary>
   </Page.Resources>
   <Grid x:Name="SocialRoot" Margin="24,18,24,20">
@@ -38,7 +69,7 @@
         <ui:Button Grid.Column="1" Icon="{ui:SymbolIcon Dismiss20}" Style="{StaticResource SocialQuietButton}" Width="30" Height="30" MinHeight="30" Padding="5" VerticalAlignment="Center" Click="DockClose_Click" AutomationProperties.Name="Close friends panel" ToolTip="Close · Esc"/>
       </Grid>
       <Grid x:Name="DockAccount" Grid.Row="1" Margin="2,8,0,10" Visibility="{Binding ConnectedVisibility}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-        <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource SocialAccentSoftBrush}" Margin="0,0,10,0" controls:RoundedClip.Radius="15"><Image controls:AsyncArtwork.Private="True" controls:AsyncArtwork.Width="120" controls:AsyncArtwork.Height="120" controls:AsyncArtwork.Url="{Binding AvatarUrl}" Stretch="UniformToFill"/></Border><StackPanel Grid.Column="1"><TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="Discord connected" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" /></StackPanel></Grid>
+        <Grid VerticalAlignment="Center"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><controls:SocialAvatar Diameter="30" Margin="0,0,10,0" Url="{Binding AvatarUrl}" Initial="S" /><StackPanel Grid.Column="1"><TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="Discord connected" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" /></StackPanel></Grid>
         <ui:Button x:Name="DockPartyButton" Grid.Column="1" Icon="{ui:SymbolIcon People24}" Style="{StaticResource SocialQuietButton}" Width="32" Height="32" MinHeight="32" Padding="7" Click="CompactParty_Click" AutomationProperties.Name="Party and invitations" ToolTip="Party and invitations" />
         <ui:Button Grid.Column="2" Icon="{ui:SymbolIcon MoreHorizontal24}" Style="{StaticResource SocialQuietButton}" Width="32" Height="32" MinHeight="32" Padding="7" Click="AccountMenu_Click" AutomationProperties.Name="Discord account options" />
       </Grid>
@@ -47,7 +78,7 @@
       <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
       <StackPanel><TextBlock Text="Friends" FontSize="25" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="{Binding FriendSummary}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" /></StackPanel>
       <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Visibility="{Binding ConnectedVisibility}">
-        <Ellipse Width="7" Height="7" Fill="#43B581" Margin="0,0,8,0" VerticalAlignment="Center" />
+        <controls:SocialStatusBadge Diameter="9" Presence="Online" VerticalAlignment="Center" Margin="0,0,8,0" />
         <TextBlock Text="{Binding AccountLabel}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
         <ui:Button Content="{Binding ConnectLabel}" Command="{Binding ConnectCommand}" Style="{StaticResource SocialQuietButton}" Visibility="{Binding ConnectionActionVisibility}" />
         <ui:Button Content="Cancel" Command="{Binding CancelCommand}" Style="{StaticResource SocialQuietButton}" Visibility="{Binding BusyVisibility}" />
@@ -55,14 +86,31 @@
       </StackPanel>
     </Grid>
 
-    <Border x:Name="ConnectSurface" Grid.Row="1" Visibility="{Binding DisconnectedVisibility}" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="520" Background="{DynamicResource SocialBackdropBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" CornerRadius="16" Padding="24" controls:RoundedClip.Radius="16"><Grid x:Name="ConnectLayout">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="0" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-      <StackPanel x:Name="ConnectIntroduction" Visibility="Collapsed" VerticalAlignment="Center" MaxWidth="360" Margin="0,0,32,0">
-        <TextBlock Text="Good games. Better company." FontSize="36" LineHeight="43" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
-        <TextBlock Text="Your Discord friends, a shared chat and one place to plan your next game." FontSize="15" LineHeight="24" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,16,0,24" />
-        <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="People24" Foreground="{DynamicResource SocialAccentBrush}" FontSize="20" Margin="0,0,10,0" /><TextBlock Text="Find friends. Make a party. Play together." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" /></StackPanel>
+    <Border x:Name="ConnectSurface" Grid.Row="1" Visibility="{Binding DisconnectedVisibility}" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="940" Background="{DynamicResource SocialBackdropBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" CornerRadius="16" Padding="36,32" controls:RoundedClip.Radius="16"><Grid x:Name="ConnectLayout">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+      <StackPanel x:Name="ConnectIntroduction" VerticalAlignment="Center" MaxWidth="420" Margin="0,0,40,0">
+        <Border HorizontalAlignment="Left" CornerRadius="16" Background="{DynamicResource SocialActionBrush}" Padding="14" Margin="0,0,0,20">
+          <ui:SymbolIcon Symbol="People24" FontSize="26" Foreground="White" />
+        </Border>
+        <TextBlock Text="Good games. Better company." FontSize="34" LineHeight="41" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+        <TextBlock Text="Your Discord friends, a shared chat and one place to plan your next game." FontSize="15" LineHeight="24" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,24" />
+        <StackPanel>
+          <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource SocialAccentSoftBrush}" Margin="0,0,12,0"><ui:SymbolIcon Symbol="People24" FontSize="19" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Your friends, live" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="Requests, presence and avatars synced straight from Discord." FontSize="12" LineHeight="17" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0" /></StackPanel>
+          </Grid>
+          <Grid Margin="0,0,0,16"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource SocialAccentSoftBrush}" Margin="0,0,12,0"><ui:SymbolIcon Symbol="Chat24" FontSize="19" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Chat that keeps up" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="Messages, GIFs, images and delivery retry without leaving Steamy." FontSize="12" LineHeight="17" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0" /></StackPanel>
+          </Grid>
+          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <Border Width="38" Height="38" CornerRadius="11" Background="{DynamicResource SocialAccentSoftBrush}" Margin="0,0,12,0"><ui:SymbolIcon Symbol="Games24" FontSize="19" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="Party up in one tap" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="Group chat, private voice calls and play-together invites." FontSize="12" LineHeight="17" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0" /></StackPanel>
+          </Grid>
+        </StackPanel>
       </StackPanel>
-      <controls:DiscordConnectionCard Grid.Column="1" Model="{Binding}" MaxWidth="430" VerticalAlignment="Center" HorizontalAlignment="Stretch" />
+      <Border Grid.Column="1" Background="{DynamicResource SocialEdgeBrush}" Margin="0,4" />
+      <controls:DiscordConnectionCard Grid.Column="2" Model="{Binding}" MinWidth="360" MaxWidth="400" VerticalAlignment="Center" HorizontalAlignment="Stretch" Margin="40,0,0,0" />
     </Grid></Border>
 
     <Border x:Name="SocialWorkspaceSurface" Grid.Row="1" Visibility="{Binding ConnectedVisibility}" CornerRadius="20" Background="{DynamicResource GlassSurfaceBrush}" BorderBrush="{DynamicResource GlassBorderBrush}" BorderThickness="1" controls:RoundedClip.Radius="20">
@@ -81,21 +129,46 @@
           <ui:Button x:Name="PartyChatShortcut" Grid.Row="2" Command="{Binding OpenPartyChatCommand}" Visibility="{Binding PartyVisibility}" Background="{DynamicResource SocialAccentSoftBrush}" BorderThickness="0" Padding="12" Margin="0,12,0,0" HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><ui:SymbolIcon Symbol="People24" Foreground="{DynamicResource SocialAccentBrush}" FontSize="22" Margin="0,0,10,0" VerticalAlignment="Center" /><StackPanel Grid.Column="1"><TextBlock Text="Party chat" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="{Binding PartyTitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" /></StackPanel></Grid>
           </ui:Button>
-          <Border Grid.Row="3" Background="{DynamicResource SocialFieldBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="11" Padding="3" Margin="0,12,0,10"><StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-            <RadioButton Content="Friends" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=Friends}" />
-            <RadioButton Content="Requests" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=Requests}" />
-            <RadioButton Content="Blocked" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=Blocked}" />
-          </StackPanel></Border>
+          <WrapPanel Grid.Row="3" Margin="0,10,0,10" HorizontalAlignment="Center">
+            <RadioButton Tag="All" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=All}" Margin="0,0,2,2">
+              <RadioButton.Content><MultiBinding Converter="{StaticResource FilterCount}"><Binding Path="Tag" RelativeSource="{RelativeSource Self}" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></RadioButton.Content>
+            </RadioButton>
+            <RadioButton Tag="DMs" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=DMs}" Margin="0,0,2,2">
+              <RadioButton.Content><MultiBinding Converter="{StaticResource FilterCount}"><Binding Path="Tag" RelativeSource="{RelativeSource Self}" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></RadioButton.Content>
+            </RadioButton>
+            <RadioButton Tag="Groups" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=Groups}" Margin="0,0,2,2">
+              <RadioButton.Content><MultiBinding Converter="{StaticResource FilterCount}"><Binding Path="Tag" RelativeSource="{RelativeSource Self}" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></RadioButton.Content>
+            </RadioButton>
+            <RadioButton Tag="Unread" GroupName="SocialFilter" Style="{StaticResource SocialTab}" IsChecked="{Binding SelectedFilter, Converter={StaticResource FilterEquals}, ConverterParameter=Unread}" Margin="0,0,2,2">
+              <RadioButton.Content><MultiBinding Converter="{StaticResource FilterCount}"><Binding Path="Tag" RelativeSource="{RelativeSource Self}" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></RadioButton.Content>
+            </RadioButton>
+          </WrapPanel>
           <StackPanel Grid.Row="4" Visibility="{Binding AddFriendVisibility}" Margin="0,0,0,12">
             <ui:TextBox x:Name="FriendUsernameBox" Style="{StaticResource SocialField}" Text="{Binding NewFriend, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Discord username or ID" AutomationProperties.Name="Discord username or user ID"><ui:TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding SendRequestCommand}" /></ui:TextBox.InputBindings></ui:TextBox>
             <ui:Button x:Name="SendFriendRequestButton" Content="Send request" Command="{Binding SendRequestCommand}" Style="{StaticResource SocialPrimaryButton}" HorizontalAlignment="Stretch" Margin="0,8,0,0" />
           </StackPanel>
           <ListBox x:Name="DiscordFriendsList" Grid.Row="5" ItemsSource="{Binding Friends}" SelectedItem="{Binding SelectedFriend}" ItemContainerStyle="{StaticResource FriendRow}" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
             <ListBox.ItemTemplate><DataTemplate>
-              <StackPanel><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Grid Width="40" Height="40" Margin="0,0,10,0"><Border CornerRadius="20" Background="{DynamicResource SocialAccentSoftBrush}"><TextBlock Text="{Binding Initial}" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border><Border controls:RoundedClip.Radius="20"><Image controls:AsyncArtwork.Private="True" controls:AsyncArtwork.Width="120" controls:AsyncArtwork.Height="120" controls:AsyncArtwork.Url="{Binding AvatarUrl}" Stretch="UniformToFill" /></Border><Ellipse Width="10" Height="10" Stroke="{DynamicResource GlassSurfaceBrush}" StrokeThickness="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{DynamicResource TextTertiaryBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsOnline}" Value="True"><Setter Property="Fill" Value="#43B581" /></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse></Grid>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" /></StackPanel>
-                <Border Grid.Column="2" CornerRadius="9" Background="{DynamicResource SocialAccentSoftBrush}" Padding="6,2" Margin="6,0,0,0" VerticalAlignment="Center"><Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=ContactUnread}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Border.Style><TextBlock x:Name="ContactUnread" Foreground="{DynamicResource SocialAccentBrush}" FontSize="10" FontWeight="SemiBold"><TextBlock.Text><MultiBinding Converter="{StaticResource SocialUnread}"><Binding Path="Id" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.NotificationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></TextBlock.Text></TextBlock></Border>
+              <StackPanel><Grid>
+                <Grid.ContextMenu><ContextMenu>
+                  <MenuItem Header="Mark as read" Command="{Binding DataContext.MarkFriendReadCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" />
+                  <MenuItem Header="Copy user ID" Command="{Binding DataContext.CopyUserIdCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" />
+                  <MenuItem Header="Block on Discord" Command="{Binding DataContext.BlockCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" Visibility="{Binding IsBlocked, Converter={StaticResource InverseBoolToVis}}" />
+                  <MenuItem Header="Unblock" Command="{Binding DataContext.UnblockCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" Visibility="{Binding IsBlocked, Converter={StaticResource BoolToVis}}" />
+                  <MenuItem Header="Remove friend" Command="{Binding DataContext.RemoveCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" Visibility="{Binding IsFriend, Converter={StaticResource BoolToVis}}" />
+                </ContextMenu></Grid.ContextMenu>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <controls:SocialAvatar Diameter="40" Margin="0,0,10,0" VerticalAlignment="Center" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" Presence="{Binding Presence}" ShowPresence="True" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <controls:HighlightTextBlock SourceText="{Binding DisplayName}" Term="{Binding DataContext.SearchText, RelativeSource={RelativeSource AncestorType=Page}}" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
+                      <controls:HighlightTextBlock.FontWeight><MultiBinding Converter="{StaticResource ConversationUnreadWeight}"><Binding Path="Id" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></controls:HighlightTextBlock.FontWeight>
+                    </controls:HighlightTextBlock>
+                    <TextBlock Grid.Column="1" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" Margin="8,1,0,0" VerticalAlignment="Center"><TextBlock.Text><MultiBinding Converter="{StaticResource ConversationTime}"><Binding Path="Id" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></TextBlock.Text></TextBlock>
+                  </Grid>
+                  <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"><TextBlock.Text><MultiBinding Converter="{StaticResource ConversationPreview}"><Binding Path="Id" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.ConversationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="Detail" /></MultiBinding></TextBlock.Text></TextBlock>
+                </StackPanel>
+                <Border Grid.Column="2" CornerRadius="8.5" Background="#f23f43" Height="17" MinWidth="17" Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Center"><Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Visible" /><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=ContactUnread}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Border.Style><TextBlock x:Name="ContactUnread" Foreground="White" FontSize="10" FontWeight="SemiBold" TextAlignment="Center"><TextBlock.Text><MultiBinding Converter="{StaticResource SocialUnread}"><Binding Path="Id" /><Binding Path="DataContext" RelativeSource="{RelativeSource AncestorType=Page}" /><Binding Path="DataContext.NotificationEpoch" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></TextBlock.Text></TextBlock></Border>
               </Grid>
               <WrapPanel Margin="0,8,0,0"><WrapPanel.Style><Style TargetType="WrapPanel"><Style.Triggers><DataTrigger Binding="{Binding IsFriend}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></WrapPanel.Style>
                 <ui:Button Content="Accept" Style="{StaticResource SocialQuietButton}" Padding="7,4" Visibility="{Binding IsIncoming, Converter={StaticResource BoolToVis}}" Command="{Binding DataContext.AcceptCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
@@ -114,58 +187,131 @@
           <Border x:Name="ConversationHeader" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="0,0,0,1" Padding="22,18">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <ui:Button x:Name="DockChatBackButton" Visibility="Collapsed" Icon="{ui:SymbolIcon ChevronLeft24}" Style="{StaticResource SocialQuietButton}" Width="30" MinHeight="30" Padding="5" Click="DockFriends_Click" AutomationProperties.Name="Back to friends" />
-              <Border Grid.Column="1" Width="38" Height="38" CornerRadius="19" Background="{DynamicResource SocialAccentSoftBrush}" Margin="0,0,12,0" controls:RoundedClip.Radius="19"><Grid><TextBlock Text="{Binding ChatInitial}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" /><Image controls:AsyncArtwork.Private="True" controls:AsyncArtwork.Width="120" controls:AsyncArtwork.Height="120" controls:AsyncArtwork.Url="{Binding ChatAvatarUrl}" Stretch="UniformToFill" /></Grid></Border>
+              <controls:SocialAvatar Grid.Column="1" Diameter="38" Margin="0,0,12,0" Url="{Binding ChatAvatarUrl}" Initial="{Binding ChatInitial}" Presence="{Binding SelectedFriend.Presence}"><controls:SocialAvatar.Style><Style TargetType="controls:SocialAvatar"><Setter Property="ShowPresence" Value="True" /><Style.Triggers><DataTrigger Binding="{Binding ChatAvatarUrl}" Value="{x:Null}"><Setter Property="ShowPresence" Value="False" /></DataTrigger></Style.Triggers></Style></controls:SocialAvatar.Style></controls:SocialAvatar>
               <StackPanel x:Name="ConversationIdentity" Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="{Binding ChatTitle}" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding ChatSubtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis" /></StackPanel>
               <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
-                <ui:Button x:Name="StartVoiceCallButton" Icon="{ui:SymbolIcon Call24}" Command="{Binding Voice.StartCallCommand}" CommandParameter="{Binding SelectedFriend}" Style="{StaticResource SocialQuietButton}" Visibility="{Binding FriendMenuVisibility}" ToolTip="{Binding Voice.StartCallLabel}" AutomationProperties.Name="{Binding Voice.StartCallLabel}" />
+                <ui:Button x:Name="StartVoiceCallButton" Icon="{ui:SymbolIcon Call24}" Content="Call" Command="{Binding Voice.StartCallCommand}" CommandParameter="{Binding SelectedFriend}" Style="{StaticResource SocialQuietButton}" Visibility="{Binding FriendMenuVisibility}" ToolTip="{Binding Voice.StartCallLabel}" AutomationProperties.Name="{Binding Voice.StartCallLabel}" />
                 <ui:Button x:Name="PlayWithFriendButton" Icon="{ui:SymbolIcon Games24}" Content="{Binding PlayWithFriendLabel}" Command="{Binding PlayWithFriendCommand}" Style="{StaticResource SocialQuietButton}" Background="{DynamicResource SocialAccentSoftBrush}" Foreground="{DynamicResource SocialAccentBrush}" CornerRadius="18" Visibility="{Binding FriendMenuVisibility}" ToolTip="{Binding PartyTitle}" />
-                <ui:Button x:Name="CompactPartyButton" Icon="{ui:SymbolIcon People24}" Content="{Binding CompactPartyLabel}" Style="{StaticResource SocialQuietButton}" Click="CompactParty_Click" Visibility="Collapsed" />
+                <ui:Button x:Name="ProfilePanelButton" Icon="{ui:SymbolIcon Person24}" Content="Profile" Style="{StaticResource SocialQuietButton}" Click="ProfilePanel_Click" Visibility="{Binding FriendMenuVisibility}" ToolTip="View profile" AutomationProperties.Name="View profile" />
+                <ui:Button x:Name="CompactPartyButton" Icon="{ui:SymbolIcon People24}" Content="{Binding CompactPartyLabel}" Style="{StaticResource SocialQuietButton}" Click="CompactParty_Click" Visibility="{Binding ConversationVisibility}" />
                 <ui:Button Icon="{ui:SymbolIcon MoreHorizontal24}" Style="{StaticResource SocialQuietButton}" Click="ConversationMenu_Click" ToolTip="Conversation options" AutomationProperties.Name="Conversation options" Visibility="{Binding ConversationVisibility}" />
               </StackPanel>
             </Grid>
           </Border>
           <Grid Grid.Row="1" ClipToBounds="True">
-            <StackPanel Visibility="{Binding NoConversationVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="300" Margin="24"><ui:SymbolIcon Symbol="Chat24" FontSize="36" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,18" /><TextBlock Text="Bring your people together" FontSize="21" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" TextAlignment="Center" /><TextBlock Text="Choose a friend to catch up, or start a party for your next game night." FontSize="13" LineHeight="21" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" /></StackPanel>
+            <StackPanel Visibility="{Binding NoConversationVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="440" Margin="24">
+              <Border Width="56" Height="56" CornerRadius="18" Background="{DynamicResource SocialActionBrush}" HorizontalAlignment="Center" Margin="0,0,0,20"><ui:SymbolIcon Symbol="Chat24" FontSize="26" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+              <TextBlock Text="Bring your people together" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" HorizontalAlignment="Center" TextAlignment="Center" />
+              <TextBlock Text="Choose a friend to catch up, or start a party for your next game night." FontSize="13" LineHeight="21" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
+              <StackPanel Visibility="{Binding OnlineFriendsVisibility}" HorizontalAlignment="Center" Margin="0,26,0,0">
+                <TextBlock Text="ONLINE NOW" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" Margin="0,0,0,10" />
+                <ItemsControl ItemsSource="{Binding OnlineFriends}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel HorizontalAlignment="Center" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate><DataTemplate>
+                    <ui:Button Click="OnlineFriendChip_Click" Style="{StaticResource SocialQuietButton}" Padding="11,6" CornerRadius="16" Margin="4,0,4,8" Cursor="Hand" AutomationProperties.Name="{Binding DisplayName}" ToolTip="{Binding Detail}">
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <controls:SocialAvatar Diameter="24" Margin="0,0,8,0" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" Presence="{Binding Presence}" ShowPresence="True" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </ui:Button>
+                  </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
             <Grid Visibility="{Binding ConversationVisibility}">
-              <TextBlock Text="Say hello. Plan your next game." FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding ChatEmptyVisibility}" />
+              <ContentControl Content="{Binding SelectedFriend}" ContentTemplate="{StaticResource ProfileCard}" Visibility="{Binding ProfileCardVisibility}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
               <ListBox x:Name="ChatMessages" controls:SmoothScroll.Enabled="True" ItemsSource="{Binding Source={StaticResource Timeline}}" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
                 <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><Grid Margin="22,18,22,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><Border Height="1" Background="{DynamicResource SocialBorderBrush}" VerticalAlignment="Center" /><TextBlock Grid.Column="1" Text="{Binding Name, Converter={StaticResource SocialDay}}" FontSize="10.5" Foreground="{DynamicResource TextTertiaryBrush}" Margin="12,0" /><Border Grid.Column="2" Height="1" Background="{DynamicResource SocialBorderBrush}" VerticalAlignment="Center" /></Grid></DataTemplate></GroupStyle.HeaderTemplate><GroupStyle.Panel><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></GroupStyle.Panel></GroupStyle></ListBox.GroupStyle>
-                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="Focusable" Value="False" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value></Setter><Style.Triggers><EventTrigger RoutedEvent="Loaded"><EventTrigger.Actions><BeginStoryboard><Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.16" /></Storyboard></BeginStoryboard></EventTrigger.Actions></EventTrigger></Style.Triggers></Style></ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate><DataTemplate>
-                  <Grid Margin="16,5,16,5"><StackPanel MaxWidth="{DynamicResource SocialMessageMaxWidth}"><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="HorizontalAlignment" Value="Left" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="HorizontalAlignment" Value="Right" /></DataTrigger></Style.Triggers></Style></StackPanel.Style>
-                    <Border Padding="12,9" CornerRadius="16"><Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource SocialCardBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="Background" Value="{DynamicResource SocialOwnBubbleBrush}" /></DataTrigger></Style.Triggers></Style></Border.Style>
-                      <Border.ContextMenu><ContextMenu><MenuItem Header="Copy message" CommandParameter="{Binding Content}" Click="CopyMessage_Click" /></ContextMenu></Border.ContextMenu>
-                      <StackPanel><TextBlock Text="{Binding DisplayContent}" TextWrapping="Wrap" FontSize="14" LineHeight="21"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="Foreground" Value="{DynamicResource SocialOwnTextBrush}" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                        <controls:ChatImagePreview Url="{Binding ImageUrl}" />
-                        <Border Visibility="{Binding HasVoiceInvite, Converter={StaticResource BoolToVis}}" Background="{DynamicResource SocialFieldBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,8,0,0"><StackPanel>
-                          <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Call24" Foreground="{DynamicResource SocialAccentBrush}" FontSize="20" Margin="0,0,9,0" /><TextBlock Text="Private voice call" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
-                          <TextBlock Text="Your microphone starts when you join. Invitations expire after five minutes." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" MaxWidth="250" Margin="0,8,0,10" />
-                          <ui:Button Command="{Binding DataContext.Voice.AcceptCallCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="12,7"><ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource SocialPrimaryButton}"><Setter Property="Content" Value="{Binding DataContext.Voice.AcceptLabel, RelativeSource={RelativeSource AncestorType=Page}}" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger><DataTrigger Binding="{Binding VoiceInvite.Expired}" Value="True"><Setter Property="Content" Value="Call expired" /><Setter Property="IsEnabled" Value="False" /></DataTrigger></Style.Triggers></Style></ui:Button.Style></ui:Button>
-                        </StackPanel></Border>
-                        <ui:Button Visibility="{Binding HasAdditionalContent, Converter={StaticResource BoolToVis}}" Command="{Binding DataContext.OpenDiscordMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialAttachmentButton}" Margin="0,6,0,0">
-                          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><ui:SymbolIcon Symbol="Document24" FontSize="23" Margin="0,0,12,0" VerticalAlignment="Center" /><StackPanel Grid.Column="1"><TextBlock Text="{Binding MediaLabel}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" /><TextBlock Text="View in Discord" FontSize="11" Opacity="0.8" Margin="0,4,0,0" /></StackPanel><TextBlock Grid.Column="2" Text="↗" FontSize="17" Margin="14,0,0,0" VerticalAlignment="Center" /></Grid>
-                        </ui:Button>
-                      </StackPanel>
+                  <StackPanel>
+                    <Border Margin="16,8,16,2" VerticalAlignment="Top"><Border.Visibility><MultiBinding Converter="{StaticResource EqualToVis}"><Binding Path="Id" /><Binding Path="DataContext.FirstUnreadId" RelativeSource="{RelativeSource AncestorType=Page}" /></MultiBinding></Border.Visibility>
+                      <StackPanel><TextBlock Text="NEW" FontSize="9.5" FontWeight="SemiBold" Foreground="#f23f43" Margin="0,0,0,3" /><Border Height="1" Background="#f23f43" Opacity="0.85" /></StackPanel>
                     </Border>
-                    <TextBlock Text="{Binding TimeLabel}" ToolTip="{Binding DayLabel}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="10" Margin="5,5,5,0"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Left" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="HorizontalAlignment" Value="Right" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                    <WrapPanel HorizontalAlignment="Right" Visibility="{Binding NeedsDeliveryAction, Converter={StaticResource BoolToVis}}" ToolTip="{Binding DeliveryError}"><ui:Button Content="{Binding DeliveryAction}" Command="{Binding DataContext.RetryMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" /><ui:Button Content="Dismiss" Command="{Binding DataContext.DismissLocalMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" /></WrapPanel>
-                  </StackPanel></Grid>
+                  <Grid x:Name="MessageRow" Margin="16,2,16,2" Background="Transparent">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="46" /><ColumnDefinition Width="46" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ContextMenu><ContextMenu><MenuItem Header="Copy message" CommandParameter="{Binding Content}" Click="CopyMessage_Click" /><MenuItem Header="Edit message" Click="EditMessage_Click"><MenuItem.Style><Style TargetType="MenuItem"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding CanManage}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></MenuItem.Style></MenuItem><MenuItem Header="Delete message" Click="DeleteMessage_Click"><MenuItem.Style><Style TargetType="MenuItem"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding CanManage}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></MenuItem.Style></MenuItem><MenuItem Header="Open in Discord" Command="{Binding DataContext.OpenDiscordMessageCommand, Source={x:Reference SocialRoot}}" CommandParameter="{Binding}" /></ContextMenu></Grid.ContextMenu>
+                    <TextBlock x:Name="HoverTime" Text="{Binding TimeLabel}" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" TextAlignment="Right" VerticalAlignment="Top" Margin="0,4,6,0" ToolTip="{Binding HoverTime}"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding IsMouseOver, ElementName=MessageRow}" Value="True" /><Condition Binding="{Binding ShowHeader}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible" /></MultiDataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+                    <controls:SocialAvatar x:Name="AuthorAvatar" Grid.Column="1" Diameter="34" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,3,0,0" Url="{Binding AuthorAvatarUrl}" Initial="{Binding AuthorInitial}" />
+                    <StackPanel x:Name="MessageContent" Grid.Column="2" MaxWidth="{DynamicResource SocialMessageMaxWidth}" HorizontalAlignment="Left">
+                      <StackPanel x:Name="MessageHeader" Orientation="Horizontal" Margin="0,0,0,3" Visibility="{Binding ShowHeader, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding AuthorLabel}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding TimeLabel}" FontSize="10.5" Foreground="{DynamicResource TextTertiaryBrush}" Margin="8,1,0,0" VerticalAlignment="Center" ToolTip="{Binding HoverTime}" />
+                      </StackPanel>
+                      <Border x:Name="MessageBubble" CornerRadius="10" Padding="0" HorizontalAlignment="Left">
+                        <StackPanel>
+                          <controls:MessageContent Message="{Binding Content}" Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}" />
+                          <controls:StickerTile StickerUrl="{Binding StickerLink}" StickerName="{Binding StickerName}" Visibility="{Binding HasSticker, Converter={StaticResource BoolToVis}}" HorizontalAlignment="Left" Margin="0,2,0,0" />
+                          <controls:ChatImagePreview Url="{Binding ImageUrl}" />
+                          <Border Visibility="{Binding HasVoiceInvite, Converter={StaticResource BoolToVis}}" Background="{DynamicResource SocialFieldBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,8,0,0"><StackPanel>
+                            <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Call24" Foreground="{DynamicResource SocialAccentBrush}" FontSize="20" Margin="0,0,9,0" /><TextBlock Text="Private voice call" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" /></StackPanel>
+                            <TextBlock Text="Your microphone starts when you join. Invitations expire after five minutes." Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" MaxWidth="250" Margin="0,8,0,10" />
+                            <ui:Button Command="{Binding DataContext.Voice.AcceptCallCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="12,7"><ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource SocialPrimaryButton}"><Setter Property="Content" Value="{Binding DataContext.Voice.AcceptLabel, RelativeSource={RelativeSource AncestorType=Page}}" /><Style.Triggers><DataTrigger Binding="{Binding IsOwn}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger><DataTrigger Binding="{Binding VoiceInvite.Expired}" Value="True"><Setter Property="Content" Value="Call expired" /><Setter Property="IsEnabled" Value="False" /></DataTrigger></Style.Triggers></Style></ui:Button.Style></ui:Button>
+                          </StackPanel></Border>
+                          <ui:Button x:Name="MediaCard" Visibility="{Binding ShowMediaCard, Converter={StaticResource BoolToVis}}" Command="{Binding DataContext.OpenDiscordMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialAttachmentButton}" Margin="0,6,0,0" ToolTip="Steamy can't preview this Discord content type yet. Open it in Discord to see it.">
+
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><ui:SymbolIcon x:Name="MediaDocumentIcon" Symbol="Document24" FontSize="23" Margin="0,0,12,0" VerticalAlignment="Center" /><ui:SymbolIcon x:Name="MediaStickerIcon" Symbol="Sticker24" FontSize="23" Margin="0,0,12,0" VerticalAlignment="Center" Visibility="Collapsed" /><StackPanel Grid.Column="1"><TextBlock Text="{Binding MediaLabel}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" /><TextBlock Text="View in Discord" FontSize="11" Opacity="0.8" Margin="0,4,0,0" /></StackPanel><TextBlock Grid.Column="2" Text="↗" FontSize="17" Margin="14,0,0,0" VerticalAlignment="Center" /></Grid>
+                          </ui:Button>
+                          <WrapPanel HorizontalAlignment="Left" Visibility="{Binding NeedsDeliveryAction, Converter={StaticResource BoolToVis}}" ToolTip="{Binding DeliveryError}" Margin="0,4,0,0"><ui:Button Content="{Binding DeliveryAction}" Command="{Binding DataContext.RetryMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" /><ui:Button Content="Dismiss" Command="{Binding DataContext.DismissLocalMessageCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" /></WrapPanel>
+                        </StackPanel>
+                      </Border>
+                    </StackPanel>
+                    <StackPanel x:Name="RowActions" Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top" Margin="4,3,0,0"><StackPanel.Style><Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding IsMouseOver, ElementName=MessageRow}" Value="True" /><Condition Binding="{Binding NeedsDeliveryAction}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible" /></MultiDataTrigger></Style.Triggers></Style></StackPanel.Style>
+                      <ui:Button Content="Copy" Click="CopyRowMessage_Click" CommandParameter="{Binding Content}" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" AutomationProperties.Name="Copy message" ToolTip="Copy message" />
+                      <ui:Button Content="Edit" Click="EditMessage_Click" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" Visibility="{Binding CanManage, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="Edit message" ToolTip="Edit message" />
+                      <ui:Button Content="Delete" Click="DeleteMessage_Click" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="6,3" MinHeight="24" Visibility="{Binding CanManage, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="Delete message" ToolTip="Delete message" />
+                    </StackPanel>
+                  </Grid>
+                  </StackPanel>
+                  <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding IsOwn}" Value="True">
+                      <Setter TargetName="MessageContent" Property="HorizontalAlignment" Value="Right" />
+                      <Setter TargetName="MessageBubble" Property="Background" Value="{DynamicResource SocialAccentSoftBrush}" />
+                      <Setter TargetName="MessageBubble" Property="Padding" Value="10,7" />
+                      <Setter TargetName="AuthorAvatar" Property="Visibility" Value="Collapsed" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsSystem}" Value="True">
+                      <Setter TargetName="MessageContent" Property="HorizontalAlignment" Value="Center" />
+                      <Setter TargetName="AuthorAvatar" Property="Visibility" Value="Collapsed" />
+                      <Setter TargetName="MessageHeader" Property="Visibility" Value="Collapsed" />
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsStickerLike}" Value="True">
+                      <Setter TargetName="MediaDocumentIcon" Property="Visibility" Value="Collapsed" />
+                      <Setter TargetName="MediaStickerIcon" Property="Visibility" Value="Visible" />
+                      <Setter TargetName="MediaCard" Property="ToolTip" Value="Discord only hands apps the sticker's metadata, not its image. Open it in Discord to see it." />
+                    </DataTrigger>
+                  </DataTemplate.Triggers>
                 </DataTemplate></ListBox.ItemTemplate>
               </ListBox>
               <ui:Button x:Name="JumpLatestButton" Icon="{ui:SymbolIcon ArrowDown24}" Content="Latest messages" Click="JumpLatest_Click" Style="{StaticResource SocialPrimaryButton}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,12" Visibility="Collapsed" />
+            </Grid>
+            <Grid x:Name="ChatSkeleton" Visibility="{Binding LoadingChatVisibility}" Margin="24,20,24,12" HorizontalAlignment="Stretch">
+              <StackPanel>
+                <Border Height="34" Width="34" CornerRadius="17" HorizontalAlignment="Left" Background="{DynamicResource SocialFieldBrush}" />
+                <Border Height="12" CornerRadius="6" HorizontalAlignment="Left" Width="220" Margin="46,-24,0,0" Background="{DynamicResource SocialFieldBrush}" />
+                <Border Height="34" CornerRadius="10" HorizontalAlignment="Left" Width="300" Margin="0,16,0,0" Background="{DynamicResource SocialFieldBrush}" Opacity="0.75" />
+                <Border Height="34" CornerRadius="10" HorizontalAlignment="Right" Width="240" Margin="0,14,0,0" Background="{DynamicResource SocialAccentSoftBrush}" Opacity="0.6" />
+                <Border Height="34" CornerRadius="10" HorizontalAlignment="Left" Width="260" Margin="0,14,0,0" Background="{DynamicResource SocialFieldBrush}" Opacity="0.5" />
+              </StackPanel>
             </Grid>
             <ProgressBar VerticalAlignment="Top" Height="2" IsIndeterminate="True" Visibility="{Binding LoadingChatVisibility}" Style="{StaticResource JobProgressBar}" />
           </Grid>
           <StackPanel Grid.Row="2" Margin="20,2,20,6"><TextBlock Text="{Binding ChatStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" /><TextBlock Text="{Binding Voice.Status}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Voice.Status}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></StackPanel>
           <Grid Grid.Row="3" Margin="20,0,20,18" Visibility="{Binding ConversationVisibility}">
-            <Border Background="{DynamicResource SocialFieldBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="18" Padding="12,6,6,6"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+           <StackPanel>
+            <Border Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}" Background="{DynamicResource SocialAccentSoftBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="12" Padding="12,7" Margin="0,0,0,6">
+              <Grid><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><ui:SymbolIcon Symbol="Edit24" FontSize="14" Foreground="{DynamicResource SocialAccentBrush}" Margin="0,0,8,0" /><TextBlock Text="Editing your message" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" /><TextBlock Text="Esc cancels" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center" /></StackPanel><ui:Button Content="Cancel" Click="CancelMessageEdit_Click" Style="{StaticResource SocialQuietButton}" FontSize="11" Padding="8,3" MinHeight="24" HorizontalAlignment="Right" AutomationProperties.Name="Cancel editing" ToolTip="Discard changes" /></Grid>
+            </Border>
+            <Border Background="{DynamicResource SocialFieldBrush}" BorderBrush="{DynamicResource SocialBorderBrush}" BorderThickness="1" CornerRadius="18" Padding="12,6,6,6"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <Grid>
-                <TextBlock Text="Write a message…" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="14" Margin="0,8,0,0" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding MessageDraft}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
-                <TextBox x:Name="MessageComposer" Style="{x:Null}" Text="{Binding MessageDraft, UpdateSourceTrigger=PropertyChanged}" FontSize="14" Padding="0,8" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="2000" MinHeight="36" MaxHeight="96" Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" BorderThickness="0" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Message text. Enter to send, Shift Enter for a new line" PreviewKeyDown="Composer_PreviewKeyDown" />
+                <TextBlock Text="{Binding ComposerPlaceholder}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="14" Margin="0,8,0,0" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding MessageDraft}" Value=""><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+                <TextBox x:Name="MessageComposer" Style="{x:Null}" Text="{Binding MessageDraft, UpdateSourceTrigger=PropertyChanged}" FontSize="14" FontFamily="Segoe UI Emoji, Segoe UI Variable Text, Segoe UI" Padding="0,8" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="2000" MinHeight="36" MaxHeight="96" Background="Transparent" Foreground="{DynamicResource TextPrimaryBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}" BorderThickness="0" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Message text. Enter to send, Shift Enter for a new line" PreviewKeyDown="Composer_PreviewKeyDown" />
               </Grid>
-              <ui:Button x:Name="GifPickerButton" Grid.Column="1" Content="GIF" Style="{StaticResource SocialQuietButton}" Click="GifPicker_Click" VerticalAlignment="Bottom" Padding="7,5" Margin="6,0,0,0" AutomationProperties.Name="Choose GIF" ToolTip="Choose a GIF" />
-              <ui:Button x:Name="SendMessageButton" Grid.Column="2" Icon="{ui:SymbolIcon ArrowUp24}" Style="{StaticResource SocialPrimaryButton}" Command="{Binding SendMessageCommand}" VerticalAlignment="Bottom" Width="36" Height="36" MinHeight="36" Padding="0" CornerRadius="18" Margin="6,0,0,0" AutomationProperties.Name="Send message" ToolTip="Send · Enter. Shift + Enter for a new line." />
+              <ui:Button x:Name="EmojiPickerButton" Grid.Column="1" Style="{StaticResource SocialQuietButton}" Click="EmojiPicker_Click" VerticalAlignment="Bottom" Padding="6,5" Margin="6,0,0,0" AutomationProperties.Name="Choose emoji" ToolTip="Emoji"><Image Width="18" Height="18" Stretch="Uniform" controls:AsyncArtwork.Url="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/72x72/1f642.png" /></ui:Button>
+              <ui:Button x:Name="GifPickerButton" Grid.Column="2" Content="GIF" Style="{StaticResource SocialQuietButton}" Click="GifPicker_Click" VerticalAlignment="Bottom" Padding="7,5" Margin="6,0,0,0" AutomationProperties.Name="Choose GIF" ToolTip="Choose a GIF" />
+              <ui:Button x:Name="SendMessageButton" Grid.Column="3" Icon="{ui:SymbolIcon ArrowUp24}" Style="{StaticResource SocialPrimaryButton}" Command="{Binding SendMessageCommand}" VerticalAlignment="Bottom" Width="36" Height="36" MinHeight="36" Padding="0" CornerRadius="18" Margin="6,0,0,0" AutomationProperties.Name="Send message" ToolTip="{Binding ComposerActionTooltip}" />
             </Grid></Border>
+           </StackPanel>
           </Grid>
         </Grid></Border>
 
@@ -177,5 +323,14 @@
     <Border x:Name="SocialStatusFooter" Grid.Row="2" Margin="4,8,4,0"><TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" MaxHeight="40" AutomationProperties.LiveSetting="Polite" /></Border>
     <Popup x:Name="CompactPartyPopup" PlacementTarget="{Binding ElementName=CompactPartyButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True"><Border Width="310" MaxHeight="600" CornerRadius="22" Background="{DynamicResource SocialNotificationBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" controls:RoundedClip.Radius="22"><controls:SocialPartyPanel DataContext="{Binding PlacementTarget.DataContext, ElementName=CompactPartyPopup}" /></Border></Popup>
     <Popup x:Name="GifPickerPopup" PlacementTarget="{Binding ElementName=GifPickerButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True" VerticalOffset="-8"><controls:GifPicker x:Name="ConversationGifPicker" /></Popup>
+    <Popup x:Name="EmojiPickerPopup" PlacementTarget="{Binding ElementName=EmojiPickerButton}" Placement="Top" StaysOpen="False" AllowsTransparency="True" VerticalOffset="-8"><Border CornerRadius="16" Background="{DynamicResource SocialNotificationBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" controls:RoundedClip.Radius="16"><controls:EmojiPicker x:Name="ConversationEmojiPicker" /></Border></Popup>
+    <Popup x:Name="ProfilePopup" PlacementTarget="{Binding ElementName=ProfilePanelButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="6"><ContentControl Content="{Binding SelectedFriend}" ContentTemplate="{StaticResource ProfileCard}" /></Popup>
+    <Popup x:Name="QuickSwitcherPopup" Placement="Center" PlacementTarget="{Binding ElementName=SocialRoot}" StaysOpen="False" AllowsTransparency="True"><Border Width="380" CornerRadius="16" Background="{DynamicResource SocialNotificationBrush}" BorderBrush="{DynamicResource SocialEdgeBrush}" BorderThickness="1" controls:RoundedClip.Radius="16" Padding="10"><StackPanel>
+      <ui:TextBox x:Name="QuickSwitcherBox" Style="{StaticResource SocialField}" PlaceholderText="Jump to a friend…" AutomationProperties.Name="Quick switcher search" />
+      <ListBox x:Name="QuickSwitcherList" Height="280" Margin="0,8,0,0" ItemContainerStyle="{StaticResource FriendRow}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" KeyDown="QuickSwitcherList_KeyDown" MouseDoubleClick="QuickSwitcherList_DoubleClick">
+        <ListBox.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal"><controls:SocialAvatar Diameter="28" Margin="0,0,9,0" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" Presence="{Binding Presence}" ShowPresence="True" /><StackPanel VerticalAlignment="Center"><TextBlock Text="{Binding DisplayName}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" /><TextBlock Text="{Binding Status}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" /></StackPanel></StackPanel></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock Text="Enter opens · Esc closes" FontSize="10" Foreground="{DynamicResource TextTertiaryBrush}" Margin="2,6,0,2" />
+    </StackPanel></Border></Popup>
   </Grid>
 </Page>

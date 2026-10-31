@@ -152,7 +152,7 @@ public sealed class DiscordSocialTests
     }
 
     [Fact]
-    public async Task FriendsFilterKeepsIncomingOutgoingAndBlockedUsersSeparateAndFailedRequestsRemainEditable()
+    public async Task FriendsListKeepsRequestsVisibleWithoutSeparateTabsAndFailedRequestsRemainEditable()
     {
         using var fixture = new Fixture();
         await fixture.Service.ConnectAsync();
@@ -160,13 +160,20 @@ public sealed class DiscordSocialTests
             [Friend(DiscordRelationshipKind.Friend), Friend(DiscordRelationshipKind.PendingIncoming),
                 Friend(DiscordRelationshipKind.PendingOutgoing), Friend(DiscordRelationshipKind.Blocked)]);
         using var model = new DiscordFriendsViewModel(fixture.Service, fixture.Settings);
-        Assert.Single(model.Friends);
-        model.SelectedFilter = "Requests";
-        Assert.Equal(2, model.Friends.Count);
+        Assert.Equal(3, model.Friends.Count);
+        Assert.Contains(model.Friends, friend => friend.IsIncoming);
+        Assert.Contains(model.Friends, friend => friend.IsOutgoing);
+        Assert.DoesNotContain(model.Friends, friend => friend.IsBlocked);
+        model.SelectedFilter = "DMs";
+        Assert.Empty(model.Friends);
+        model.SelectedFilter = "Groups";
+        Assert.Empty(model.Friends);
+        model.SelectedFilter = "Unread";
+        Assert.Empty(model.Friends);
+        model.SelectedFilter = "All";
         model.SearchText = "missing";
         Assert.Empty(model.Friends);
-        model.SearchText = ""; model.SelectedFilter = "Blocked";
-        Assert.True(Assert.Single(model.Friends).IsBlocked);
+        model.SearchText = "";
         fixture.Client.FriendError = new DiscordSocialException("Request failed");
         model.NewFriend = "another.person";
         await model.SendRequestCommand.ExecuteAsync(null);
@@ -216,7 +223,7 @@ public sealed class DiscordSocialTests
         await model.InitializeAsync();
         Assert.Equal(1, delayed); Assert.Equal(2, fixture.Client.Connections); Assert.Equal(0, fixture.Client.Authorizations); Assert.True(model.IsConnected);
     }
-    private static DiscordFriend Friend(DiscordRelationshipKind kind) => new(new(5UL + (ulong)kind, "friend", "A Friend", null), kind, "Online");
+    private static DiscordFriend Friend(DiscordRelationshipKind kind) => new(new(5UL + (ulong)kind, "friend", "A Friend", null), kind, DiscordPresence.Online);
     private sealed class Fixture : IDisposable
     {
         public Settings Settings { get; } = new();

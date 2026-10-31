@@ -10,7 +10,7 @@ public sealed class DiscordNotificationTests
     public void DuplicateAndEditedMessagesDoNotCreateRepeatedNotifications()
     {
         var settings = new Settings(); using var center = new NotificationCenterViewModel(settings, action => action());
-        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center);
+        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center, conversations: TestStores.Isolated());
         service.Emit(Message(50)); service.Emit(Message(50)); service.Emit(Message(50) with { IsEdited = true });
         Assert.Single(center.Items); Assert.Single(center.Toasts); Assert.Equal(1, center.UnreadCount);
         service.Emit(Message(51)); Assert.Single(center.Items); Assert.Equal(2, center.ConversationUnreadCount(2));
@@ -19,7 +19,7 @@ public sealed class DiscordNotificationTests
     public void CurrentActiveConversationSuppressesToastsAndMarksEarlierMessagesRead()
     {
         var settings = new Settings(); using var center = new NotificationCenterViewModel(settings, action => action());
-        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center);
+        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center, conversations: TestStores.Isolated());
         service.Emit(Message(50)); Assert.Equal(1, center.UnreadCount);
         model.SetChatVisible(true); model.SetWindowActive(true); model.SelectedFriend = model.Friends[0];
         Assert.Equal(0, center.UnreadCount); Assert.Empty(center.Toasts);
@@ -51,7 +51,7 @@ public sealed class DiscordNotificationTests
     public async Task NotificationsClearSocialContentOnSignOutAndDoNotNotifyFetchedHistory()
     {
         var settings = new Settings(); using var center = new NotificationCenterViewModel(settings, action => action());
-        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center);
+        var service = new Social(); using var model = new DiscordFriendsViewModel(service, settings, notifications: center, conversations: TestStores.Isolated());
         service.History = [Message(1) with { SentAt = DateTimeOffset.UtcNow.AddDays(-1) }];
         model.SelectedFriend = model.Friends[0]; Assert.Empty(center.Items);
         service.Emit(Message(2)); center.Publish(new("download", SteamyNotificationKind.Download, "Ready", "Your game is ready"));
@@ -68,7 +68,7 @@ public sealed class DiscordNotificationTests
     private sealed class Social : IDiscordSocialService, IDiscordChatService
     {
         public bool IsAvailable => true; public bool HasSavedSession => Snapshot.IsConnected; public string AvailabilityMessage => "Ready";
-        public DiscordSnapshot Snapshot { get; private set; } = new(true, new(1, "one", "One", null), [new(new(2, "two", "Two", null), DiscordRelationshipKind.Friend, "Online")]);
+        public DiscordSnapshot Snapshot { get; private set; } = new(true, new(1, "one", "One", null), [new(new(2, "two", "Two", null), DiscordRelationshipKind.Friend, DiscordPresence.Online)]);
         public bool HasCommunicationPermission => Snapshot.IsConnected; public DiscordParty? Party => null; public IReadOnlyList<DiscordPartyInvite> Invites => [];
         public event EventHandler? Changed; public event EventHandler<DiscordMessageChange>? MessageChanged;
         public IReadOnlyList<DiscordChatMessage> History = [];
@@ -78,8 +78,11 @@ public sealed class DiscordNotificationTests
         public Task DisconnectAsync(CancellationToken token = default) { Snapshot = DiscordSnapshot.Disconnected; Changed?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
         public Task SendFriendRequestAsync(string value, CancellationToken token = default) => Task.CompletedTask;
         public Task UpdateFriendAsync(DiscordFriend friend, DiscordFriendAction action, CancellationToken token = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token = default) => Task.FromResult<IReadOnlyList<DiscordMessageSummary>>([]);
         public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peer, bool party, CancellationToken token = default) => Task.FromResult(History);
         public Task<DiscordChatMessage> SendMessageAsync(ulong peer, bool party, string text, CancellationToken token = default) => Task.FromResult(Message(99));
+        public Task EditMessageAsync(ulong peer, ulong messageId, string text, CancellationToken token = default) => Task.CompletedTask;
+        public Task DeleteMessageAsync(ulong peer, ulong messageId, CancellationToken token = default) => Task.CompletedTask;
         public void SetShowingChat(bool showing) { }
         public Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token = default) => Task.CompletedTask;
         public Task InviteToPartyAsync(ulong id, CancellationToken token = default) => Task.CompletedTask;

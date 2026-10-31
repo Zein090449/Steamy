@@ -42,8 +42,8 @@ public sealed class SteamCatalogService : ISteamCatalogService
     private readonly bool _ownsHttpClient;
     private readonly SemaphoreSlim _catalogLock = new(1, 1);
     private readonly SemaphoreSlim _detailsGate = new(4, 4);
-    private readonly SemaphoreSlim _artworkGate = new(4, 4);
-    private readonly SemaphoreSlim _cachedArtworkGate = new(4, 4);
+    private readonly SemaphoreSlim _artworkGate = new(8, 8);
+    private readonly SemaphoreSlim _cachedArtworkGate = new(8, 8);
     private readonly ImagePipeline _images;
     private readonly bool _ownsImages;
     private readonly RecentMetadataMisses _unavailableDetails;
@@ -640,10 +640,12 @@ public sealed class SteamCatalogService : ISteamCatalogService
         {
             item.PortraitImageUrl,
             item.LibraryImageUrl,
-            $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{item.AppId}/library_600x900_2x.jpg",
-            $"https://cdn.akamai.steamstatic.com/steam/apps/{item.AppId}/library_600x900_2x.jpg",
+            // Tiles decode at 400 px, so the 600x900 asset is a quarter of the 2x
+            // download and arrives visibly faster; 2x remains the last-resort path.
             $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{item.AppId}/library_600x900.jpg",
             $"https://cdn.akamai.steamstatic.com/steam/apps/{item.AppId}/library_600x900.jpg",
+            $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{item.AppId}/library_600x900_2x.jpg",
+            $"https://cdn.akamai.steamstatic.com/steam/apps/{item.AppId}/library_600x900_2x.jpg",
             item.CapsuleImageUrl,
             $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{item.AppId}/capsule_616x353.jpg",
             $"https://cdn.akamai.steamstatic.com/steam/apps/{item.AppId}/capsule_616x353.jpg",

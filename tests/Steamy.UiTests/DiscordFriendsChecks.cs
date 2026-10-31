@@ -204,7 +204,7 @@ public sealed partial class PageSmokeTests
         var settings = new FirstRunMemorySettings();
         var store = new AppDataStore();
         store.Games.Add(new Game { AppId = 1091500, Name = "Cyberpunk 2077", InstallState = GameInstallState.Installed, HeaderImage = FixtureArtwork.Read(1091500, "header") });
-        using var model = new DiscordFriendsViewModel(service, settings, store);
+        using var model = new DiscordFriendsViewModel(service, settings, store, conversations: TestStores.Isolated());
         model.SelectedFriend = model.Friends.First(friend => friend.Username == "kai");
         var page = new FriendsPage(model);
         var previousMainWindow = Application.Current.MainWindow;
@@ -216,7 +216,7 @@ public sealed partial class PageSmokeTests
             UiThemeService.ApplyGlassPolicy(highContrast: false);
             Assert.Equal(theme == "Light", UiThemeService.IsLight);
             RenderDiscord(page, "friends-" + theme.ToLowerInvariant(), artifacts);
-            Assert.Equal(2, model.Friends.Count);
+            Assert.Equal(4, model.Friends.Count);
             Assert.Contains("1 online", model.FriendSummary);
             var card = Descendants<DiscordConnectionCard>(page).Single();
             Assert.Same(model, card.Model);
@@ -256,8 +256,13 @@ public sealed partial class PageSmokeTests
         Assert.Equal(901UL, service.Party!.Id); Assert.Empty(model.PartyInvites);
         RenderDiscord(page, "friends-joined-party", artifacts);
         model.LeavePartyCommand.Execute(null);
-        model.SelectedFilter = "Requests";
-        Assert.Equal(2, model.Friends.Count);
+        model.SelectedFilter = "DMs";
+        Assert.Contains(model.Friends, friend => friend.Id == 1);
+        Assert.DoesNotContain(model.Friends, friend => friend.Id == 2);
+        model.SelectedFilter = "Groups";
+        Assert.Empty(model.Friends);
+        model.SelectedFilter = "All";
+        Assert.Equal(4, model.Friends.Count);
         Assert.Contains(model.Friends, friend => friend.IsIncoming);
         Assert.Contains(model.Friends, friend => friend.IsOutgoing);
         UiThemeService.Apply("Dark");
@@ -268,9 +273,7 @@ public sealed partial class PageSmokeTests
         model.SearchText = "";
         model.AcceptCommand.Execute(model.Friends.First(friend => friend.IsIncoming));
         Assert.Equal(1, service.Accepted);
-        Assert.Single(model.Friends);
-        model.SelectedFilter = "Friends";
-        Assert.Equal(3, model.Friends.Count);
+        Assert.Equal(4, model.Friends.Count);
         model.NewFriend = "new.teammate";
         model.SendRequestCommand.Execute(null);
         Assert.Equal("new.teammate", service.SentTo);
@@ -306,7 +309,7 @@ public sealed partial class PageSmokeTests
     private static void CheckChatScrollBehavior()
     {
         var fixture = new DiscordUiFixture();
-        using var model = new DiscordFriendsViewModel(fixture, new FirstRunMemorySettings());
+        using var model = new DiscordFriendsViewModel(fixture, new FirstRunMemorySettings(), conversations: TestStores.Isolated());
         model.SelectedFriend = model.Friends[0];
         var page = new FriendsPage(model);
         var window = new Window { Content = page, Width = 1200, Height = 800, ShowInTaskbar = false, ShowActivated = false };
@@ -387,13 +390,13 @@ public sealed partial class PageSmokeTests
 
     private sealed partial class DiscordUiFixture : IDiscordSocialService, IDiscordChatService
     {
-        private static DiscordFriend Friend(ulong id, string name, DiscordRelationshipKind kind, string status = "Offline") => new(new(id, name, name == "luna" ? "Luna" : name == "kai" ? "Kai" : "Mika", null), kind, status);
+        private static DiscordFriend Friend(ulong id, string name, DiscordRelationshipKind kind, DiscordPresence presence = DiscordPresence.Offline) => new(new(id, name, name == "luna" ? "Luna" : name == "kai" ? "Kai" : "Mika", null), kind, presence);
         public bool Available = true;
         public bool IsAvailable => Available;
         public bool HasSavedSession => Snapshot.IsConnected;
         public string AvailabilityMessage => Available ? "Connected securely with Discord." : "Discord support isn't installed in this build yet. You can connect later.";
         public DiscordSnapshot Snapshot { get; private set; } = new(true, new(100, "friend", "Friend", null),
-            [Friend(1, "kai", DiscordRelationshipKind.Friend, "Online"), Friend(2, "mika", DiscordRelationshipKind.Friend),
+            [Friend(1, "kai", DiscordRelationshipKind.Friend, DiscordPresence.Online), Friend(2, "mika", DiscordRelationshipKind.Friend),
                 Friend(3, "luna", DiscordRelationshipKind.PendingIncoming), Friend(4, "waiting", DiscordRelationshipKind.PendingOutgoing)]);
         public int Accepted;
         public string? SentTo;
@@ -413,6 +416,7 @@ public sealed partial class PageSmokeTests
         public Task SendFriendRequestAsync(string usernameOrId, CancellationToken token = default) { SentTo = usernameOrId; return Task.CompletedTask; }
         public Task UpdateFriendAsync(DiscordFriend friend, DiscordFriendAction action, CancellationToken token = default)
         { Accepted++; Snapshot = Snapshot with { Relationships = Snapshot.Relationships.Select(f => f.Id == friend.Id ? f with { Kind = DiscordRelationshipKind.Friend } : f).ToArray() }; Changed?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }
+        public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token = default) => Task.FromResult<IReadOnlyList<DiscordMessageSummary>>([]);
         public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token = default)
         {
             if (HistoryOverride is not null) return Task.FromResult(HistoryOverride(peerId, party));
@@ -424,6 +428,8 @@ public sealed partial class PageSmokeTests
         }
         public Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token = default)
         { var message = new DiscordChatMessage(2000, 100, peerId, party ? peerId : 0, 8, content, DateTimeOffset.UtcNow, true, false, false); MessageChanged?.Invoke(this, new(message)); return Task.FromResult(message); }
+        public Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token = default) => Task.CompletedTask;
+        public Task DeleteMessageAsync(ulong peerId, ulong messageId, CancellationToken token = default) => Task.CompletedTask;
         public void SetShowingChat(bool showing) { }
         public Task CreatePartyAsync(DiscordPartyGame game, CancellationToken token = default)
         { Party = new(900, game, [Snapshot.Profile!]); Changed?.Invoke(this, EventArgs.Empty); return Task.CompletedTask; }

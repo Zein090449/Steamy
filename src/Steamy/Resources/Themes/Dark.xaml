@@ -162,6 +162,12 @@
   <CornerRadius x:Key="DialogOverlayCornerRadius">20,20,20,20</CornerRadius>
   <CornerRadius x:Key="DialogFooterCornerRadius">12,12,12,12</CornerRadius>
   <SolidColorBrush x:Key="SocialBackdropBrush" Color="#E0000000" />
+  <!-- Floating cards sit over chat content, so they need an opaque surface rather than the glass backdrop. -->
+  <LinearGradientBrush x:Key="SocialSolidCardBrush" StartPoint="0,0" EndPoint="0.35,1">
+    <GradientStop Color="#FF0B0B0D" Offset="0" />
+    <GradientStop Color="#FF060608" Offset="1" />
+  </LinearGradientBrush>
+  <SolidColorBrush x:Key="SocialSolidBannerBrush" Color="#FF232135" />
   <LinearGradientBrush x:Key="SocialChromeBrush" StartPoint="0,0" EndPoint="0.35,1">
     <GradientStop Color="#D00A0A0C" Offset="0" />
     <GradientStop Color="#C0000000" Offset="0.48" />
@@ -175,11 +181,7 @@
     <GradientStop Color="#04FFFFFF" Offset="0.48" />
     <GradientStop Color="#78040406" Offset="1" />
   </LinearGradientBrush>
-  <LinearGradientBrush x:Key="SocialFieldBrush" StartPoint="0,0" EndPoint="0.35,1">
-    <GradientStop Color="#10FFFFFF" Offset="0" />
-    <GradientStop Color="#05FFFFFF" Offset="0.48" />
-    <GradientStop Color="#90040406" Offset="1" />
-  </LinearGradientBrush>
+  <SolidColorBrush x:Key="SocialFieldBrush" Color="#90040406" />
   <SolidColorBrush x:Key="SocialBorderBrush" Color="#26FFFFFF" />
   <SolidColorBrush x:Key="SocialAccentBrush" Color="#AAA5FF" />
   <SolidColorBrush x:Key="SocialAccentSoftBrush" Color="#206762C4" />

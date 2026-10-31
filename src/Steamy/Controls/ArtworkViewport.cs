@@ -27,7 +27,12 @@ internal static class ArtworkViewport
             // Image reports an empty RenderSize until it has a Source, even when
             // its parent has already allocated a visible slot. Do not require the
             // downloaded bitmap in order to begin downloading that first bitmap.
-            if (view is not Image || VisualTreeHelper.GetParent(view) is not FrameworkElement parent) return null;
+            // Inline UI children (emoji inside TextBlock inlines) have a non-FrameworkElement
+            // visual parent, so walk up to the nearest FrameworkElement for the transform.
+            if (view is not Image) return null;
+            DependencyObject ancestor = view;
+            while (ancestor is not null && ancestor is not FrameworkElement) ancestor = VisualTreeHelper.GetParent(ancestor);
+            if (ancestor is not FrameworkElement parent) return null;
             localBounds = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutSlot(view);
             if (localBounds.Width <= 0 || localBounds.Height <= 0) return null;
             reference = parent;

@@ -208,7 +208,15 @@ internal sealed partial class DiscordSdkClient : IDiscordSocialClient, IDiscordC
                 if (friendProfile.Id == profile?.Id) continue;
                 if (!Enum.TryParse<DiscordRelationshipKind>(Call(relation, "DiscordRelationshipType")?.ToString(), out var kind)) continue;
                 var status = Call(user!, "Status")?.ToString() switch
-                { "Online" => "Online", "Idle" => "Idle", "Dnd" or "DoNotDisturb" => "Do not disturb", _ => "Offline" };
+                {
+                    "Online" => DiscordPresence.Online,
+                    "Idle" => DiscordPresence.Idle,
+                    "Dnd" or "DoNotDisturb" => DiscordPresence.Dnd,
+                    "Streaming" => DiscordPresence.Streaming,
+                    "Invisible" => DiscordPresence.Invisible,
+                    "Offline" => DiscordPresence.Offline,
+                    _ => DiscordPresence.Unknown
+                };
                 friends.Add(new(friendProfile, kind, status));
             }
             finally { DisposeObject(user); DisposeObject(relation); }
@@ -217,13 +225,32 @@ internal sealed partial class DiscordSdkClient : IDiscordSocialClient, IDiscordC
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public DiscordProfile? GetUser(ulong userId)
+    {
+        if (userId == 0) return null;
+        var user = Invoke(_client, "GetUser", userId);
+        try { return Profile(user); }
+        finally { DisposeObject(user); }
+    }
+
     private DiscordProfile? Profile(object? user)
     {
         if (user is null) return null;
         var id = Convert.ToUInt64(Call(user, "Id"));
         if (id == 0) return null;
-        var png = Enum.Parse(Type("UserHandle+AvatarType"), "Png");
-        var avatar = Call(user, "AvatarUrl", png, png) as string;
+        var avatarType = Type("UserHandle+AvatarType");
+        var png = Enum.Parse(avatarType, "Png");
+        string? avatar;
+        try
+        {
+            // Animated avatars ("a_" hashes) need the Gif request; the SDK serves a PNG otherwise.
+            var hash = Call(user, "Avatar") as string;
+            var requested = hash is { Length: >= 2 } && hash.StartsWith("a_", StringComparison.Ordinal)
+                ? Enum.Parse(avatarType, "Gif") : png;
+            avatar = Call(user, "AvatarUrl", requested, png) as string;
+        }
+        catch (Exception exception) when (exception is MissingMethodException or ArgumentException)
+        { avatar = Call(user, "AvatarUrl", png, png) as string; }
         if (!Uri.TryCreate(avatar, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "cdn.discordapp.com") avatar = null;
         return new(id, (string)Call(user, "Username")!, (string)Call(user, "DisplayName")!, avatar);
     }

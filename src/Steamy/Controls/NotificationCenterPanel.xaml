@@ -49,8 +49,8 @@
       <StackPanel VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
           <TextBlock Text="Notifications" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" />
-          <Border CornerRadius="9" Background="{DynamicResource SocialAccentSoftBrush}" Margin="8,0,0,0" Padding="7,2" Visibility="{Binding BadgeVisibility}" VerticalAlignment="Center">
-            <TextBlock Text="{Binding BadgeLabel, StringFormat='{}{0} New'}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource SocialAccentBrush}" />
+          <Border CornerRadius="9" Background="#b3262a" BorderBrush="#f23f43" BorderThickness="1" Margin="8,0,0,0" Padding="7,2" Visibility="{Binding BadgeVisibility}" VerticalAlignment="Center">
+            <TextBlock Text="{Binding BadgeLabel, StringFormat='{}{0} New'}" FontSize="10" FontWeight="Bold" Foreground="White" />
           </Border>
         </StackPanel>
         <TextBlock Text="{Binding Summary}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,3,0,0" />
@@ -107,11 +107,12 @@
                   <Style.Triggers>
                     <DataTrigger Binding="{Binding IsRead}" Value="False">
                       <Setter Property="Background" Value="#181D2B" />
-                      <Setter Property="BorderBrush" Value="#2E3750" />
+                      <Setter Property="BorderBrush" Value="#f23f43" />
+                      <Setter Property="BorderThickness" Value="1" />
                     </DataTrigger>
                     <Trigger Property="IsMouseOver" Value="True">
                       <Setter Property="Background" Value="#202638" />
-                      <Setter Property="BorderBrush" Value="#3D4968" />
+                      <Setter Property="BorderBrush" Value="#f23f43" />
                     </Trigger>
                   </Style.Triggers>
                 </Style>
@@ -124,11 +125,8 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Icon/Avatar Squircle -->
-                <Border Width="40" Height="40" CornerRadius="12" Background="{DynamicResource SocialAccentSoftBrush}" BorderBrush="#25FFFFFF" BorderThickness="1" Margin="0,0,12,0" controls:RoundedClip.Radius="12">
-                  <Grid>
-                    <TextBlock Text="{Binding Initial}" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <Image controls:AsyncArtwork.Private="True" controls:AsyncArtwork.Width="120" controls:AsyncArtwork.Height="120" controls:AsyncArtwork.Url="{Binding AvatarUrl}" Stretch="UniformToFill" />
-                  </Grid>
+                <Border Width="40" Height="40" CornerRadius="12" BorderThickness="1" Margin="0,0,12,0" controls:RoundedClip.Radius="12"><Border.Style><Style TargetType="Border"><Setter Property="Background" Value="{DynamicResource SocialAccentSoftBrush}" /><Setter Property="BorderBrush" Value="#25FFFFFF" /><Style.Triggers><DataTrigger Binding="{Binding IsRead}" Value="False"><Setter Property="BorderBrush" Value="#f23f43" /></DataTrigger></Style.Triggers></Style></Border.Style>
+                  <controls:SocialAvatar Diameter="38" Url="{Binding AvatarUrl}" Initial="{Binding Initial}" />
                 </Border>
 
                 <!-- Content -->
@@ -145,8 +143,8 @@
 
                 <!-- Unread Glowing Indicator Dot -->
                 <Grid Grid.Column="2" VerticalAlignment="Top" Margin="8,4,0,0" Visibility="{Binding UnreadVisibility}">
-                  <Ellipse Width="12" Height="12" Fill="{DynamicResource SocialAccentBrush}" Opacity="0.25" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                  <Ellipse Width="7" Height="7" Fill="{DynamicResource SocialAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <Ellipse Width="12" Height="12" Fill="#f23f43" Opacity="0.25" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <Ellipse Width="7" Height="7" Fill="#f23f43" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Grid>
               </Grid>
             </ui:Button>

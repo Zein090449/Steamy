@@ -44,6 +44,14 @@ public sealed partial class PageSmokeTests
             Assert.Equal(2, animator.FrameCount);
             var frame = animator.CurrentFrameIndex;
             PumpUntil(() => animator.CurrentFrameIndex != frame);
+            // A two-frame GIF must wrap repeatedly instead of freezing after its first pass.
+            var passes = 0; var lastIndex = animator.CurrentFrameIndex;
+            void CountPass(object? sender, EventArgs args) { var current = animator.CurrentFrameIndex; if (current < lastIndex) passes++; lastIndex = current; }
+            animator.CurrentFrameChanged += CountPass;
+            PumpDispatcher(TimeSpan.FromMilliseconds(900));
+            animator.CurrentFrameChanged -= CountPass;
+            Assert.True(passes >= 1, $"GIF froze after {passes} completed pass(es)");
+            Assert.True(preview.IsPlaying);
             active = false; ChatImagePreview.RefreshVisibleMedia(); Assert.False(preview.IsPlaying);
             active = true; PumpUntil(() => preview.IsPlaying);
             scroll.ScrollToEnd(); PumpDispatcher(TimeSpan.FromMilliseconds(240)); Assert.False(preview.IsPlaying);

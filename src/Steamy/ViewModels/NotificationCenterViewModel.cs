@@ -26,7 +26,7 @@ public sealed class SteamyNotification : ObservableObject
     public string KindLabel => Content.Kind switch { SteamyNotificationKind.Message => "Message", SteamyNotificationKind.PartyInvite => "Party invitation", SteamyNotificationKind.FriendRequest => "Friend request", SteamyNotificationKind.Download => "Download", _ => "Steamy" };
     public int MessageCount { get; private set; } = 1;
     public string CountLabel => MessageCount > 1 ? $"{MessageCount} messages" : KindLabel;
-    public string TimeLabel => CreatedAt.ToLocalTime().ToString("HH:mm");
+    public string TimeLabel => Steamy.Services.SocialTime.Clock(CreatedAt);
     internal SteamyNotification(NotificationDraft content, DateTimeOffset now) { Content = content; CreatedAt = now; }
     internal void Merge(NotificationDraft content, DateTimeOffset now)
     { Content = content; CreatedAt = now; MessageCount++; IsRead = false; foreach (var name in new[] { nameof(Title), nameof(Body), nameof(AvatarUrl), nameof(CountLabel), nameof(TimeLabel) }) OnPropertyChanged(name); }

@@ -3,6 +3,9 @@
                     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
                     xmlns:controls="clr-namespace:Steamy.Controls">
+  <!-- WPF applies implicit styles only to the exact type; the subclass would otherwise
+       lose the WPF-UI style that assigns the item ControlTemplate, leaving bare items. -->
+  <Style TargetType="controls:BoundedNavigationView" BasedOn="{StaticResource {x:Type ui:NavigationView}}" />
   <ControlTemplate x:Key="GlassNavigationTemplate" TargetType="ui:NavigationView">
     <Grid Background="Transparent">
       <Grid x:Name="PageHost" Margin="0,64,0,0">

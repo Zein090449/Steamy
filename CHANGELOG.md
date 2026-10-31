@@ -3,6 +3,20 @@
 Each GitHub release uses the section of its version as its release notes.
 Add a new `## x.y.z` section at the top before tagging.
 
+## 0.8.2
+
+### Discord Friends overhaul, GIF playback, and message editing
+
+- **Tenor by default:** The GIF picker now opens on Tenor out of the box, with Klipy and Giphy available as alternative providers for anyone with their own app key.
+- **GIF playback:** Chat GIFs now loop continuously instead of freezing after one pass. Off-screen media still releases its decoder and memory, playback stays capped at four simultaneous animations, and reduced-motion preferences are respected.
+- **Message editing:** Your own direct messages can be edited from the message actions or the message menu. The composer shows an editing banner, Enter saves, Esc cancels, and the conversation list preview updates with the new text.
+- **Message deletion:** Your own direct messages can be deleted for everyone after a confirmation prompt, and they disappear from the conversation and preview immediately.
+- **Friends experience:** Real avatars and presence badges everywhere, unread badges with read state kept locally, message grouping, profile cards, typing indicators, colored emoji and sticker rendering, party invites, and game launching from a party.
+- **Notifications:** Direct messages and party invitations feed the notification center, respect the conversation you have open, and clear when the chat is read.
+- **Chat media:** Discord-sent GIF links resolve and render inline, and the media viewer can open clips and originals.
+- **Faster media:** Artwork, images, and GIFs load with fewer requests and better caching across the library and chat.
+- **Branding:** New metallic Steamy app mark and icon.
+
 ## 0.8.1.3
 
 ### Performance, scroll responsiveness, and visual polish

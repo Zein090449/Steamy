@@ -51,13 +51,15 @@ public sealed partial class PageSmokeTests
         try
         {
             CheckMinimizedDashboard(window, model);
-            Assert.Equal(TextFormattingMode.Display, TextOptions.GetTextFormattingMode(window));
+            Assert.Equal(TextFormattingMode.Ideal, TextOptions.GetTextFormattingMode(window));
             Assert.Equal(TextRenderingMode.ClearType, TextOptions.GetTextRenderingMode(window));
             Assert.Equal(TextHintingMode.Fixed, TextOptions.GetTextHintingMode(window));
             Assert.Equal(ClearTypeHint.Enabled, RenderOptions.GetClearTypeHint(window));
             Assert.True(window.UseLayoutRounding);
             Assert.True(window.SnapsToDevicePixels);
-            Assert.IsType<DrawingImage>(window.FindResource("SteamyBrandImage"));
+            var brand = Assert.IsType<BitmapImage>(window.FindResource("SteamyBrandImage"));
+            Assert.Equal(256, brand.PixelWidth);
+            Assert.True(brand.IsFrozen);
             Assert.Equal(17, FrameHit(window, new Point(window.ActualWidth - 3, window.ActualHeight - 3)));
             Assert.Equal(2, FrameHit(window, new Point(250, 20)));
             Assert.Equal(20, FrameHit(window, new Point(window.ActualWidth - 22, 17))); // HTCLOSE
@@ -93,6 +95,9 @@ public sealed partial class PageSmokeTests
             Assert.Equal(24, RoundedClip.GetRadius(pane));
             Assert.InRange(pane.ActualWidth, 231, 233);
             Assert.All(nav.MenuItems.OfType<NavigationViewItem>(), item => Assert.True(item.ActualHeight >= 40));
+            Assert.All(nav.MenuItems.OfType<NavigationViewItem>().Concat(nav.FooterMenuItems.OfType<NavigationViewItem>()),
+                item => { Assert.NotNull(item.Template); Assert.True(VisualTreeHelper.GetChildrenCount(item) > 0, $"{item.Content} must render a template."); });
+            SaveGlassVisual(window, "sidebar-open");
             Assert.Equal(new[] { "Downloads", "Settings" }, nav.FooterMenuItems.OfType<NavigationViewItem>().Select(item => item.Content));
 
             var page = Descendants<DashboardPage>(window).Single();

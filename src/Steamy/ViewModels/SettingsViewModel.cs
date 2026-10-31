@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -108,6 +109,13 @@ public sealed class SettingsViewModel : ViewModelBase
         _ = MeasureCacheAsync();
         TestMirrorCommand = new AsyncRelayCommand(TestMirrorAsync);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync);
+        ShowEggHintsCommand = new RelayCommand(() => ShowEggHints = true);
+        ResetEasterEggsCommand = new RelayCommand(ResetEasterEggs);
+        MainWindow.EasterEggsChanged += (_, _) =>
+        {
+            Settings.EasterEggs = _settingsService.Load().EasterEggs;
+            RefreshEasterEggBindings();
+        };
 
         _ = RefreshCredentialStatusAsync();
     }
@@ -498,7 +506,36 @@ public sealed class SettingsViewModel : ViewModelBase
         UpdateStatus = await App.CheckForUpdatesAsync();
     }
 
-    // ---- saving ------------------------------------------------------------------------------
+    // ---- easter eggs -------------------------------------------------------------------------
+
+    private bool _showEggHints;
+    public bool ShowEggHints { get => _showEggHints; set => SetProperty(ref _showEggHints, value); }
+    public int EasterEggsFound => Settings.EasterEggs.Length;
+    public string EasterEggSummary => $"Easter eggs found: {Math.Min(EasterEggsFound, 2)}/2";
+    public string EasterEggStatus => EasterEggsFound switch
+    {
+        >= 2 => "You've found them all. Respect.",
+        1 => "One more is hiding somewhere…",
+        _ => "Two secrets are hidden in Steamy."
+    };
+    public Visibility EasterEggResetVisibility => EasterEggsFound > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public IRelayCommand ShowEggHintsCommand { get; }
+    public IRelayCommand ResetEasterEggsCommand { get; }
+
+    private void RefreshEasterEggBindings()
+    {
+        OnPropertyChanged(nameof(EasterEggsFound)); OnPropertyChanged(nameof(EasterEggSummary));
+        OnPropertyChanged(nameof(EasterEggStatus)); OnPropertyChanged(nameof(EasterEggResetVisibility));
+    }
+
+    private void ResetEasterEggs()
+    {
+        Settings.EasterEggs = [];
+        _ = SaveAsync("Easter eggs reset.");
+        RefreshEasterEggBindings();
+    }
+
+// ---- saving ------------------------------------------------------------------------------
 
     /// <summary>Writes settings and any typed credentials; used by the button and by autosave.</summary>
     public async Task SaveAsync(string? note = null)

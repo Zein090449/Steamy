@@ -55,12 +55,12 @@ public sealed partial class PageSmokeTests
             Assert.Equal(Visibility.Collapsed, ((Button)page.FindName("PlayButton")).Visibility);
             Assert.Equal(1, page.DownloadWizardStep); // This regression helper explicitly chooses DepotDownloader after the method picker.
             CheckWizardStage(page, 1);
-            page.SelectDownloadSource(ManifestSource.Sushi);
+            page.SelectDownloadSource(ManifestSource.Ryuu);
             var beforePreparation = downloads.PreparationCalls.Count;
             AwaitWizardStep(page);
             Assert.Equal(2, page.DownloadWizardStep);
             Assert.Equal(beforePreparation + 1, downloads.PreparationCalls.Count);
-            Assert.Equal((game.AppId, ManifestSource.Sushi), downloads.PreparationCalls.Last());
+            Assert.Equal((game.AppId, ManifestSource.Ryuu), downloads.PreparationCalls.Last());
             var firstPlan = downloads.Plans.Last();
             Assert.Equal(2, page.DownloadDepotChoices.Count);
             CheckWizardStage(page, 2);
@@ -226,7 +226,7 @@ public sealed partial class PageSmokeTests
             var superseded = page.AdvanceDownloadWizardAsync();
             PumpUntil(() => downloads.PreparationCalls.Count == beforeChangingSource + 1);
             var supersededToken = downloads.PreparationTokens.Last();
-            page.SelectDownloadSource(ManifestSource.Sushi);
+            page.SelectDownloadSource(ManifestSource.Ryuu);
             Assert.True(supersededToken.IsCancellationRequested);
             AwaitWizardStep(page);
             var sourceChangePlan = downloads.Plans.Last();
@@ -253,10 +253,10 @@ public sealed partial class PageSmokeTests
             PumpUntil(() => ((Grid)page.FindName("OverlayGrid")).Visibility == Visibility.Collapsed);
             Assert.True(preparationToken.IsCancellationRequested);
             OpenDepotDownloadSetup(page, game);
-            page.SelectDownloadSource(ManifestSource.Sushi);
+            page.SelectDownloadSource(ManifestSource.Ryuu);
             AwaitWizardStep(page);
             var currentPlan = downloads.Plans.Last();
-            Assert.Equal(ManifestSource.Sushi, currentPlan.Source);
+            Assert.Equal(ManifestSource.Ryuu, currentPlan.Source);
             var stalePlan = downloads.CreatePreparation(game.AppId, ManifestSource.Sushi);
             stale.SetResult(stalePlan);
             PumpUntil(() => preparation.IsCompleted);
