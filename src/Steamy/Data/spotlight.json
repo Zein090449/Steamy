@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-30T12:55:02.026848+00:00",
+  "updatedAt": "2026-10-31T12:20:00.475750+00:00",
   "games": [
     {
       "appId": 4530370,
@@ -181,9 +181,9 @@
       "releaseLabel": "Oct 22, 2026",
       "releaseDate": "2026-10-22",
       "storeUrl": "https://store.steampowered.com/app/4435490/",
-      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/4138eadd1bb476b0499f6ee7690aba461fdf179c/library_hero_2x.jpg?t=1793201144",
-      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/0c492be3204835d71e8b454b6eb1817f8ff68c0d/header_2x.jpg?t=1793201144",
-      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/c71bc2cb60e440d1a0d2435d0c06c4d4a4050edf/library_capsule_2x.jpg?t=1793201144",
+      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/4138eadd1bb476b0499f6ee7690aba461fdf179c/library_hero_2x.jpg?t=1793390552",
+      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/0c492be3204835d71e8b454b6eb1817f8ff68c0d/header_2x.jpg?t=1793390552",
+      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4435490/c71bc2cb60e440d1a0d2435d0c06c4d4a4050edf/library_capsule_2x.jpg?t=1793390552",
       "logoUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/4435490/5cc1d9ffc6a8fde4e601f51714a3c3a0d97f70e1/logo.png"
     },
     {
@@ -287,9 +287,9 @@
       "releaseLabel": "Feb 8, 2024",
       "releaseDate": "2024-02-08",
       "storeUrl": "https://store.steampowered.com/app/553850/",
-      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/6cb2177e422438e35b0cd1f1111a468130a83a11/library_hero_2x.jpg?t=1792487611",
-      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/850e2f9e5bb15c5706bb9a1edc832f4f782e8be5/header_2x.jpg?t=1792487611",
-      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/a79b4d13ce2b1e1379116085b4f97b45c14548ab/library_capsule_2x.jpg?t=1792487611"
+      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/6cb2177e422438e35b0cd1f1111a468130a83a11/library_hero_2x.jpg?t=1793395133",
+      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/850e2f9e5bb15c5706bb9a1edc832f4f782e8be5/header_2x.jpg?t=1793395133",
+      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/553850/a79b4d13ce2b1e1379116085b4f97b45c14548ab/library_capsule_2x.jpg?t=1793395133"
     },
     {
       "appId": 1716740,
