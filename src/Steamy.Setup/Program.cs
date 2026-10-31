@@ -122,10 +122,12 @@ namespace Steamy.Setup
             // Opaque WPF window: native DPI and hardware composition, without layered-window bitmap scaling.
             using (var stream = GetType().Assembly.GetManifestResourceStream("Steamy.SetupWindow.xaml")) root = (Grid)XamlReader.Load(stream);
             root.Resources["SetupFontFamily"] = SetupFonts.Load(fonts); Content = root;
-            using (var stream = GetType().Assembly.GetManifestResourceStream("Steamy.Brand.xaml"))
+            using (var stream = GetType().Assembly.GetManifestResourceStream("Resources/Brand/steamy-256.png"))
             {
-                var brand = (ResourceDictionary)XamlReader.Load(stream);
-                View<Image>("HeaderLogo").Source = View<Image>("HeroLogo").Source = (DrawingImage)brand["SteamyBrandImage"];
+                var logo = new BitmapImage();
+                logo.BeginInit(); logo.StreamSource = stream; logo.DecodePixelWidth = 256; logo.CacheOption = BitmapCacheOption.OnLoad; logo.EndInit();
+                logo.Freeze();
+                View<Image>("HeaderLogo").Source = View<Image>("HeroLogo").Source = logo;
             }
             View<Grid>("BackdropHost").Children.Add(backdrop);
             View<Button>("Primary").Click += delegate { StartOrLaunch(); };
@@ -311,7 +313,8 @@ namespace Steamy.Setup
                 using (var window = new SetupWindow(true, Path.Combine(Path.GetDirectoryName(Path.GetFullPath(report)), "setup-fonts")))
                 {
                     window.Opacity = 0; window.ShowInTaskbar = false; window.ShowActivated = false; window.Preview("--preview-welcome", 0); window.Show(); window.UpdateLayout(); Pump();
-                    if (!(window.View<Image>("HeroLogo").Source is DrawingImage)) throw new Exception("Logo must remain vector at every DPI.");
+                    var logo = window.View<Image>("HeroLogo").Source as BitmapImage;
+                    if (logo == null || logo.PixelWidth < 156 || !logo.IsFrozen) throw new Exception("Logo must load at a crisp, frozen size.");
                     GlyphTypeface glyph;
                     if (!new Typeface(window.View<TextBlock>("Heading").FontFamily, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal).TryGetGlyphTypeface(out glyph) || !glyph.FamilyNames.Values.Any(name => name.Contains("Google Sans"))) throw new Exception("Embedded brand fonts must load.");
                     if (window.AllowsTransparency || window.root.CacheMode != null) throw new Exception("Setup must use opaque native WPF composition.");
@@ -360,7 +363,7 @@ namespace Steamy.Setup
                     if (live.Motion && !live.rendering) throw new Exception("Motion must resume after restore.");
                     live.Close(); if (live.rendering || live.clock.IsRunning || live.busy) throw new Exception("Closing must stop motion without starting an install.");
                 }
-                File.WriteAllText(report, "25 WPF installer interface checks passed: vector artwork and embedded fonts, opaque composition, ClearType, options, language, keyboard/UI Automation, preview isolation, progress, 100/150/200% rendering, ready/error states, live motion and minimize/restore/close cleanup. No real app or runtime installed."); return 0;
+                File.WriteAllText(report, "25 WPF installer interface checks passed: brand artwork and embedded fonts, opaque composition, ClearType, options, language, keyboard/UI Automation, preview isolation, progress, 100/150/200% rendering, ready/error states, live motion and minimize/restore/close cleanup. No real app or runtime installed."); return 0;
             }
             catch (Exception ex) { File.WriteAllText(report, ex.ToString()); return 1; }
         }

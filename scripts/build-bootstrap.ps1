@@ -49,7 +49,7 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw 'The Windows .NET Framework
 $arguments = @('/nologo','/target:winexe','/platform:x64','/optimize+',('/out:' + (Join-Path $output $OutputName)),
     ('/win32icon:' + (Join-Path $repoRoot 'src/Steamy/Resources/Brand/steamy.ico')),
     ('/win32manifest:' + $manifestPath),
-    ('/resource:' + (Join-Path $repoRoot 'src/Steamy/Resources/Brand/Brand.xaml') + ',Steamy.Brand.xaml'),
+    ('/resource:' + (Join-Path $repoRoot 'src/Steamy/Resources/Brand/steamy-256.png') + ',Resources/Brand/steamy-256.png'),
     ('/resource:' + (Join-Path $repoRoot 'src/Steamy.Setup/SetupWindow.xaml') + ',Steamy.SetupWindow.xaml'),
     ('/resource:' + (Join-Path $fontOutput 'Regular.deflate') + ',Steamy.Font.Regular'),
     ('/resource:' + (Join-Path $fontOutput 'SemiBold.deflate') + ',Steamy.Font.SemiBold'),
