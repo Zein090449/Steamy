@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-01T13:15:33.776942+00:00",
+  "updatedAt": "2026-11-02T15:42:09.805458+00:00",
   "games": [
     {
       "appId": 4530370,
@@ -114,9 +114,9 @@
       "releaseLabel": "Coming soon",
       "releaseDate": null,
       "storeUrl": "https://store.steampowered.com/app/4767480/",
-      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/7784ce5fccd1e7b9707a8096ef2ecd392f21248d/library_hero_2x.jpg?t=1793121250",
-      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/a34e3c4d4088e71c7d2cdc5445dc950abd2521db/header_2x.jpg?t=1793121250",
-      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/9a591522b656d04c138a65fb01b74122b670cde6/library_capsule_2x.jpg?t=1793121250",
+      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/e882e2426636b0d8a832d9ece8ebd2f5130bc70f/library_hero_2x.jpg?t=1793618251",
+      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/a34e3c4d4088e71c7d2cdc5445dc950abd2521db/header_2x.jpg?t=1793618251",
+      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4767480/9a591522b656d04c138a65fb01b74122b670cde6/library_capsule_2x.jpg?t=1793618251",
       "releaseTime": null,
       "logoUrl": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/4767480/8f355a474fb6fb0c08d530694682dbc14a6b955a/logo.png"
     },
