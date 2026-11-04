@@ -12,9 +12,14 @@ from relay import INFLIGHT_KEY, RELAY_KEY, MAX_FILE, Relay, create_app
 
 def package():
     output = io.BytesIO()
+    # A fixed timestamp keeps repeated calls byte-identical instead of shifting with the clock.
+    stamp = (2026, 1, 1, 0, 0, 0)
     with zipfile.ZipFile(output, "w") as archive:
-        archive.writestr("480.lua", 'addappid(480)\naddappid(481,0,"fixture-depot-key")')
-        archive.writestr("481_123.manifest", "fixture manifest")
+        for name, body in (("480.lua", 'addappid(480)\naddappid(481,0,"fixture-depot-key")'),
+                           ("481_123.manifest", "fixture manifest")):
+            entry = zipfile.ZipInfo(name, date_time=stamp)
+            entry.compress_type = zipfile.ZIP_STORED
+            archive.writestr(entry, body)
     return output.getvalue()
 
 
