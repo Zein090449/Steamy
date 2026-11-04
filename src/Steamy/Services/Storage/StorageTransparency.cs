@@ -36,6 +36,10 @@ public static class StorageTransparency
             new("Crash diagnostics", Path.Combine(roaming, "crash.log"), "Error details used for troubleshooting. Logs may contain local paths and exception messages.", "When an application error is recorded.", "Past crash diagnostics are lost."),
             Local("Downloader output", "ddmod-output.log", "Output written by DepotDownloader progress parsing. Review logs before sharing; they can contain local paths and third-party tool output.", "As downloader output is received.", "Past downloader output is lost; this does not remove downloaded games.")
         };
+        if (DiscordIntegration.Enabled)
+            personal.Insert(3, new("Discord message archive", Path.Combine(roaming, "discord-messages.db"),
+                "Direct messages Steamy has seen, saved locally so conversations survive restarts and Discord's limited game history. Messages and author names are stored unencrypted in SQLite.",
+                "When Discord is connected and messages are received, sent or loaded.", "Saved chat history is lost. Discord's own copy is not affected.", "discord-messages.db-wal / discord-messages.db-shm may exist beside it."));
         var cache = new List<StorageLocation>();
         void Cache(string name, string folder, string purpose, string when = "When the corresponding feature requests this data.") =>
             cache.Add(Local(name, folder, purpose, when, "Data may have to be downloaded or rebuilt. Do not remove files used by an active operation."));

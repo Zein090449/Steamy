@@ -4,13 +4,17 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- WinForms is referenced only for NotifyIcon; the WPF manifest keeps its DPI settings. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <UseWPF>true</UseWPF>
+    <!-- The notification-area icon needs WinForms; its implicit usings would collide with WPF types. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RootNamespace>Steamy</RootNamespace>
     <AssemblyName>Steamy</AssemblyName>
-    <Version>0.8.2.1</Version>
-    <FileVersion>0.8.2.1</FileVersion>
-    <AssemblyVersion>0.8.2.1</AssemblyVersion>
+    <Version>0.8.2.2</Version>
+    <FileVersion>0.8.2.2</FileVersion>
+    <AssemblyVersion>0.8.2.2</AssemblyVersion>
     <Product>Steamy</Product>
     <Company>zein090449</Company>
     <Authors>zein090449</Authors>
@@ -27,6 +31,8 @@
     <DiscordApplicationId Condition="'$(DiscordApplicationId)' == ''">1559657404994429101</DiscordApplicationId>
   </PropertyGroup>
   <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
     <None Update="tool-preparation-capabilities.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="ThirdParty\UcOnline\LICENSE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="ThirdParty\UcOnline\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

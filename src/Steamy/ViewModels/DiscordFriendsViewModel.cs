@@ -14,6 +14,8 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
     private readonly ISettingsService _settingsService;
     private readonly AppSettings _settings;
     private readonly IDiscordConversationStore _conversations;
+    private readonly IDiscordMessageArchive? _archive;
+    private Task? _backfill;
     private readonly SynchronizationContext? _context = SynchronizationContext.Current;
     private CancellationTokenSource? _operation;
     private bool _isBusy;
@@ -50,13 +52,15 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
 
     public DiscordFriendsViewModel(IDiscordSocialService discord, ISettingsService settings,
         IAppDataStore? store = null, IGameLaunchService? gameLaunch = null, NotificationCenterViewModel? notifications = null, IArtworkService? artwork = null, DiscordVoiceViewModel? voice = null,
-        IDiscordConversationStore? conversations = null)
+        IDiscordConversationStore? conversations = null, IDiscordMessageArchive? archive = null, IFileUploadService? uploads = null)
     {
         _discord = discord;
+        _uploads = uploads;
         Voice = voice;
         _settingsService = settings;
         _settings = settings.Load();
         _conversations = conversations ?? new DiscordConversationStore();
+        _archive = archive;
         _conversations.Changed += ConversationsChanged;
         _discord.Changed += DiscordChanged;
         _settings.PropertyChanged += SettingsChanged;
@@ -86,6 +90,7 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
         });
         _socialArtwork = artwork;
         InitializeWorkspace(store, gameLaunch);
+        InitializeComposerAttachments();
         InitializeNotifications(notifications);
         Refresh();
     }
@@ -274,6 +279,7 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
             _conversations.ApplySummaries(summaries);
             _summariesLoaded = true;
             UpgradeAfterFreshSummaries();
+            StartBackfill(summaries);
         }
         catch (Exception)
         {
@@ -283,6 +289,32 @@ public sealed partial class DiscordFriendsViewModel : ObservableObject, IDisposa
         finally
         {
             if (generation == _summariesGeneration) _summarySync = null;
+        }
+    }
+    private void StartBackfill(IReadOnlyList<DiscordMessageSummary> summaries)
+    {
+        if (_archive is null || _chat is null || _backfill is { IsCompleted: false }) return;
+        _backfill = BackfillArchivedConversationsAsync(summaries);
+    }
+    private async Task BackfillArchivedConversationsAsync(IReadOnlyList<DiscordMessageSummary> summaries)
+    {
+        // Discord hands games only the latest window of each DM; pull every conversation once
+        // so the local archive keeps what that window would otherwise drop.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        var peers = summaries.Where(summary => summary.LastMessageId > 0)
+            .OrderByDescending(summary => summary.LastMessageId).Take(40).ToArray();
+        foreach (var summary in peers)
+        {
+            if (timeout.IsCancellationRequested || !HasCommunicationPermission) return;
+            try
+            {
+                if (await _archive!.LatestMessageIdAsync(summary.UserId, timeout.Token) >= summary.LastMessageId) continue;
+                var history = await _chat!.GetMessagesAsync(summary.UserId, false, timeout.Token);
+                // The summaries only carry IDs, so the latest fetched message supplies the
+                // preview and timestamp the DM list shows for conversations not yet opened.
+                if (history.Count > 0) _conversations.Record(summary.UserId, history[^1]);
+            }
+            catch (Exception error) when (error is DiscordSocialException or InvalidOperationException or OperationCanceledException or TimeoutException) { }
         }
     }
     public DiscordConversationEntry? Conversation(ulong peerId) => _conversations.Get(peerId);

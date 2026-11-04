@@ -31,8 +31,8 @@ public sealed class ChatImagePreview : Border
     private System.Windows.Controls.MediaElement? _video;
     public ChatImagePreview()
     {
-        Visibility = Visibility.Collapsed; CornerRadius = new(10); Height = 200; MinWidth = 180; MaxWidth = 320;
-        ClipToBounds = true; Margin = new(0, 8, 0, 4);
+        Visibility = Visibility.Collapsed; CornerRadius = new(10);
+        ClipToBounds = true;
         Loaded += (_, _) => { Active.Add(this); EnsureClock(); Reset(); };
         Unloaded += (_, _) => { Active.Remove(this); Release(); if (Active.Count == 0) _clock?.Stop(); };
         IsVisibleChanged += (_, _) => { if (!IsVisible) SetPlayback(false); };

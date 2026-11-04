@@ -144,6 +144,112 @@ public sealed class UpdateServiceTests
         finally { Directory.Delete(folder, true); }
     }
 
+    [Fact]
+    public void ReleaseParsingCarriesTheIncrementalAsset()
+    {
+        var data = JsonNode.Parse(Description())!;
+        data["assets"]!.AsArray().Add(new JsonObject
+        {
+            ["name"] = "Steamy-v0.4.16-delta.zip",
+            ["browser_download_url"] = "https://github.com/Zein090449/Steamy/releases/download/v0.4.16/Steamy-v0.4.16-delta.zip",
+            ["size"] = 40,
+            ["digest"] = "sha256:" + new string('b', 64),
+        });
+        using var document = System.Text.Json.JsonDocument.Parse(data.ToJsonString());
+        var update = GitHubUpdateService.ParseRelease(document.RootElement, new Version(0, 4, 15))!;
+        Assert.NotNull(update.Delta);
+        Assert.Equal(40, update.Delta!.AssetSize);
+        Assert.Equal("sha256:" + new string('b', 64), "sha256:" + update.Delta.Sha256);
+    }
+
+    [Fact]
+    public void PublishedManifestMayIncludeTheIncrementalAsset()
+    {
+        var data = JsonNode.Parse(Description())!;
+        data["assets"]!.AsArray().Add(new JsonObject
+        {
+            ["name"] = "Steamy-v0.4.16-delta.zip",
+            ["browser_download_url"] = "https://github.com/Zein090449/Steamy/releases/download/v0.4.16/Steamy-v0.4.16-delta.zip",
+            ["size"] = 40,
+            ["digest"] = "sha256:" + new string('b', 64),
+        });
+        using var document = System.Text.Json.JsonDocument.Parse(data.ToJsonString());
+        var update = GitHubUpdateService.ParsePublishedManifest(document.RootElement, new Version(0, 4, 15))!;
+        Assert.NotNull(update.Delta);
+        Assert.EndsWith("/Steamy-v0.4.16-delta.zip", update.Delta!.AssetUrl.AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task IncrementalPackageReplacesOnlyChangedFiles()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Steamy-delta-" + Guid.NewGuid().ToString("N"));
+        var install = Path.Combine(folder, "app");
+        var work = Path.Combine(folder, "work");
+        Directory.CreateDirectory(install);
+        await File.WriteAllTextAsync(Path.Combine(install, "Steamy.exe"), "old executable");
+        await File.WriteAllTextAsync(Path.Combine(install, "unchanged.dll"), "same bytes");
+        await File.WriteAllTextAsync(Path.Combine(install, "removed.dll"), "gone next release");
+        try
+        {
+            var executable = "new executable";
+            var manifest = $$"""{"format":1,"tag":"v0.4.16","baseTag":"v0.4.15","files":[{"path":"Steamy.exe","sha256":"{{Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(executable)))}}","size":{{System.Text.Encoding.UTF8.GetByteCount(executable)}}}],"deleted":["removed.dll"]}""";
+            var deltaBytes = Zip(("delta-manifest.json", manifest), ("Steamy.exe", executable));
+            var deltaUri = new Uri("https://example.test/Steamy-v0.4.16-delta.zip");
+            using var handler = new Handler((_, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(deltaBytes) });
+            using var http = new HttpClient(handler);
+            using var service = new GitHubUpdateService(http, install, work, currentVersion: new(0, 4, 15));
+            var update = new UpdateInfo(new(0, 4, 16), "v0.4.16", new("https://example.test/Steamy-v0.4.16.zip"), 999, null,
+                new DeltaUpdate(deltaUri, deltaBytes.Length, Convert.ToHexString(SHA256.HashData(deltaBytes))));
+            await service.InstallAsync(update);
+            Assert.Equal(executable, await File.ReadAllTextAsync(Path.Combine(install, "Steamy.exe")));
+            Assert.Equal("same bytes", await File.ReadAllTextAsync(Path.Combine(install, "unchanged.dll")));
+            Assert.False(File.Exists(Path.Combine(install, "removed.dll")));
+            Assert.Single(handler.Requests);
+            Assert.False(Directory.Exists(Path.Combine(work, "staging")));
+            Assert.False(Directory.Exists(Path.Combine(work, "delta-staging")));
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Fact]
+    public async Task IncrementalPackageWithAnotherBaseFallsBackToTheFullDownload()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Steamy-delta-base-" + Guid.NewGuid().ToString("N"));
+        var install = Path.Combine(folder, "app");
+        var work = Path.Combine(folder, "work");
+        Directory.CreateDirectory(install);
+        await File.WriteAllTextAsync(Path.Combine(install, "Steamy.exe"), "old executable");
+        try
+        {
+            var deltaBytes = Zip(("delta-manifest.json", """{"format":1,"tag":"v0.4.16","baseTag":"v0.4.14","files":[],"deleted":[]}"""));
+            var fullBytes = Zip(("Steamy.exe", "full executable"));
+            var deltaUri = new Uri("https://example.test/Steamy-v0.4.16-delta.zip");
+            var fullUri = new Uri("https://example.test/Steamy-v0.4.16.zip");
+            using var handler = new Handler((uri, _) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(uri == deltaUri ? deltaBytes : fullBytes) });
+            using var http = new HttpClient(handler);
+            using var service = new GitHubUpdateService(http, install, work, currentVersion: new(0, 4, 15));
+            var update = new UpdateInfo(new(0, 4, 16), "v0.4.16", fullUri, fullBytes.Length, Convert.ToHexString(SHA256.HashData(fullBytes)),
+                new DeltaUpdate(deltaUri, deltaBytes.Length, Convert.ToHexString(SHA256.HashData(deltaBytes))));
+            await service.InstallAsync(update);
+            Assert.Equal("full executable", await File.ReadAllTextAsync(Path.Combine(install, "Steamy.exe")));
+            Assert.Equal(new[] { deltaUri, fullUri }, handler.Requests);
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    private static byte[] Zip(params (string Path, string Text)[] files)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+            foreach (var (path, text) in files)
+            {
+                using var stream = archive.CreateEntry(path).Open();
+                using var writer = new StreamWriter(stream);
+                writer.Write(text);
+            }
+        return buffer.ToArray();
+    }
+
     private static HttpResponseMessage Json(string value) => new(HttpStatusCode.OK) { Content = new StringContent(value) };
     private sealed class Handler(Func<Uri, CancellationToken, HttpResponseMessage> respond) : HttpMessageHandler
     {

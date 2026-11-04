@@ -110,6 +110,7 @@ public sealed partial class DiscordFriendsViewModel
             if (!_autoSelecting) _autoSelectPending = false;
             ConversationChanging?.Invoke(this, EventArgs.Empty);
             SaveDraft();
+            Attachment = null;
             if (!SetProperty(ref _selectedFriend, value)) return;
             _partyChat = false;
             MessageDraft = _conversationDrafts.GetValueOrDefault(ConversationKey, "");
@@ -131,7 +132,8 @@ public sealed partial class DiscordFriendsViewModel
         _chat = _discord as IDiscordChatService; _store = store; _gameLaunch = gameLaunch;
         if (_chat is not null) _chat.MessageChanged += ChatMessageChanged;
         if (_store is not null) _store.Games.CollectionChanged += GamesChanged;
-        SendMessageCommand = new AsyncRelayCommand(SendMessageAsync, () => HasCommunicationPermission && ConversationId != 0 && !_sendingConversations.Contains(ConversationKey) && _outbox.Count < 64 && MessageDraft.Trim().Length is > 0 and <= 2000, AsyncRelayCommandOptions.AllowConcurrentExecutions);
+        SendMessageCommand = new AsyncRelayCommand(SendMessageAsync, () => HasCommunicationPermission && ConversationId != 0 && !_sendingConversations.Contains(ConversationKey) && _outbox.Count < 64 && !_uploadingAttachment
+            && (MessageDraft.Trim().Length is > 0 and <= 2000 || _attachment is not null), AsyncRelayCommandOptions.AllowConcurrentExecutions);
         RetryMessageCommand = new AsyncRelayCommand<DiscordChatMessage>(RetryMessageAsync, message => message is { NeedsDeliveryAction: true } && HasCommunicationPermission && !_sendingConversations.Contains(MessageConversation(message)), AsyncRelayCommandOptions.AllowConcurrentExecutions);
         DismissLocalMessageCommand = new RelayCommand<DiscordChatMessage>(message => { if (message is { NeedsDeliveryAction: true }) { _outbox.Remove(message.ClientNonce); Messages.Remove(message); RefreshWorkspaceCommands(); } });
         ReloadChatCommand = new AsyncRelayCommand(LoadConversationAsync, () => HasCommunicationPermission && ConversationId != 0 && !_chatLoading);
@@ -193,6 +195,7 @@ public sealed partial class DiscordFriendsViewModel
         if (_partyChat) return;
         ConversationChanging?.Invoke(this, EventArgs.Empty);
         if (!_partyChat) SaveDraft();
+        Attachment = null;
         _selectedFriend = null; _partyChat = true; OnPropertyChanged(nameof(SelectedFriend));
         MessageDraft = _conversationDrafts.GetValueOrDefault(ConversationKey, "");
         _ = LoadConversationAsync(); RefreshWorkspace();
@@ -224,6 +227,14 @@ public sealed partial class DiscordFriendsViewModel
         _chatLoading = true; ChatStatus = "Loading conversation…"; RefreshWorkspace();
         try
         {
+            // Discord only shares recent DM history with games; show what Steamy saved locally first.
+            if (!party && _archive is not null)
+            {
+                foreach (var message in await _archive.LoadAsync(id, 1000, cancellation.Token))
+                    if (generation == _conversationGeneration && !_deletedMessages.Contains(message.Id)
+                        && !Messages.Any(current => current.Id == message.Id)) UpsertMessage(message);
+                if (generation != _conversationGeneration) return;
+            }
             var history = await _chat.GetMessagesAsync(id, party, cancellation.Token);
             if (generation != _conversationGeneration) return;
             // Merge messages which arrived live during the history request instead of discarding them.
@@ -232,7 +243,9 @@ public sealed partial class DiscordFriendsViewModel
             if (!party && history.Count > 0) _conversations.Record(id, history[^1]);
             MarkCurrentConversationRead();
             OnPropertyChanged(nameof(FirstUnreadId));
-            ChatStatus = history.Count >= 200 ? "Showing the latest messages. Discord only shares the last 72 hours of chat history with games." : "";
+            ChatStatus = history.Count >= 200
+                ? "Discord shares only the last 72 hours of chat with games. Messages Steamy saved on this PC stay available."
+                : "";
         }
         catch (OperationCanceledException) { if (generation == _conversationGeneration) ChatStatus = "Conversation loading cancelled."; }
         // 404/10003 means the DM channel doesn't exist yet — the centered empty state already invites a first message.
@@ -285,7 +298,7 @@ public sealed partial class DiscordFriendsViewModel
             Messages.Insert(index, message with { ShowHeader = header });
             RecomputeHeaders(index + 1);
         }
-        while (Messages.Count > 200) Messages.RemoveAt(0);
+        while (Messages.Count > 1200) Messages.RemoveAt(0);
         if (Messages.Count > 0 && !Messages[0].ShowHeader) Messages[0] = Messages[0] with { ShowHeader = true };
         OnPropertyChanged(nameof(ChatEmptyVisibility)); OnPropertyChanged(nameof(ProfileCardVisibility)); OnPropertyChanged(nameof(FirstUnreadId));
     }
@@ -356,7 +369,7 @@ public sealed partial class DiscordFriendsViewModel
         return true;
     }
     private void ClearConversation()
-    { ConversationChanging?.Invoke(this, EventArgs.Empty); var pending = _historyCancellation; _historyCancellation = null; pending?.Cancel(); _conversationGeneration++; _chatLoading = false; Messages.Clear(); _deletedMessages.Clear(); ResetMessageEdit(); MessageDraft = ""; OnPropertyChanged(nameof(FirstUnreadId)); }
+    { ConversationChanging?.Invoke(this, EventArgs.Empty); var pending = _historyCancellation; _historyCancellation = null; pending?.Cancel(); _conversationGeneration++; _chatLoading = false; Messages.Clear(); _deletedMessages.Clear(); ResetMessageEdit(); MessageDraft = ""; Attachment = null; OnPropertyChanged(nameof(FirstUnreadId)); }
     private void GamesChanged(object? sender, NotifyCollectionChangedEventArgs args) => RefreshGames();
     private void RefreshGames()
     {

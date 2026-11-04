@@ -37,13 +37,17 @@ public static class ServiceRegistration
         if (DiscordIntegration.Enabled)
         {
         services.AddSingleton<IDiscordSocialService, DiscordSocialService>();
+        services.AddSingleton<IBackgroundModeService, BackgroundModeService>();
         services.AddSingleton<ICommunityInviteService, CommunityInviteService>();
         services.AddSingleton<CommunityViewModel>();
         services.AddSingleton<IDiscordConversationStore, DiscordConversationStore>();
+        services.AddSingleton<IDiscordMessageArchive, DiscordMessageArchive>();
+        services.AddSingleton<IFileUploadService, CatboxFileUploadService>();
         services.AddSingleton<DiscordFriendsViewModel>();
         services.AddSingleton<DiscordVoiceViewModel>();
         services.AddSingleton<IGifSearchService, GifSearchService>();
         services.AddSingleton<GifPickerViewModel>();
+        services.AddSingleton<StickerFavoritesViewModel>();
         }
         services.AddSingleton<UiTranslationService>();
         services.AddSingleton<ILogDispatcher, WpfLogDispatcher>();

@@ -27,6 +27,8 @@ public sealed record DiscordChatMessage(ulong Id, ulong AuthorId, ulong PeerId, 
     public bool IsSystem { get; init; }
     // Header visibility is recomputed by the conversation (grouping consecutive messages from one author).
     public bool ShowHeader { get; init; } = true;
+    // The avatar rides with the header, so consecutive messages only show the profile every five minutes.
+    public bool ShowAuthorAvatar => ShowHeader && !IsOwn && !IsSystem;
     public string ClientNonce { get; init; } = "";
     public DiscordDeliveryState DeliveryState { get; init; } = DiscordDeliveryState.Sent;
     public string DeliveryError { get; init; } = "";
@@ -173,15 +175,30 @@ public sealed partial class DiscordSocialService : IDiscordChatService, IDiscord
     public IReadOnlyList<DiscordPartyInvite> Invites => (_client as IDiscordCommunicationClient)?.Invites ?? [];
     public event EventHandler<DiscordMessageChange>? MessageChanged;
 
-    public Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token = default) =>
-        CommunicationOperationAsync((client, ct) => { ValidateConversation(peerId, party); return client.GetMessagesAsync(peerId, party, ct); }, token);
+    public async Task<IReadOnlyList<DiscordChatMessage>> GetMessagesAsync(ulong peerId, bool party, CancellationToken token = default)
+    {
+        var history = await CommunicationOperationAsync((client, ct) =>
+        {
+            ValidateConversation(peerId, party);
+            return client.GetMessagesAsync(peerId, party, ct);
+        }, token);
+        if (!party && _archive is not null && history.Count > 0)
+        {
+            // Archiving outlives the caller's request so a cancelled chat view still keeps the fetched page.
+            await _archive.SaveAsync(history, CancellationToken.None);
+            await _archive.PruneMissingAsync(peerId, history, CancellationToken.None);
+        }
+        return history;
+    }
     public Task<IReadOnlyList<DiscordMessageSummary>> GetMessageSummariesAsync(CancellationToken token = default) =>
         CommunicationOperationAsync((client, ct) => client.GetMessageSummariesAsync(ct), token);
-    public Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token = default)
+    public async Task<DiscordChatMessage> SendMessageAsync(ulong peerId, bool party, string content, CancellationToken token = default)
     {
         var text = content.Trim();
         if (text.Length is 0 or > 2000) throw new ArgumentException("Write a message of up to 2,000 characters.");
-        return CommunicationOperationAsync((client, ct) => { ValidateConversation(peerId, party); return client.SendMessageAsync(peerId, party, text, ct); }, token);
+        var message = await CommunicationOperationAsync((client, ct) => { ValidateConversation(peerId, party); return client.SendMessageAsync(peerId, party, text, ct); }, token);
+        if (!party && _archive is not null && message is { LobbyId: 0, Id: > 0 }) await _archive.SaveAsync([message], CancellationToken.None);
+        return message;
     }
     public Task EditMessageAsync(ulong peerId, ulong messageId, string content, CancellationToken token = default)
     {
@@ -238,6 +255,12 @@ public sealed partial class DiscordSocialService : IDiscordChatService, IDiscord
             : throw new InvalidOperationException("Reconnect Discord to enable chat and parties."), true, token);
     private void ClientMessageChanged(object? sender, DiscordMessageChange change)
     {
-        if (ReferenceEquals(sender, _client) && HasCommunicationPermission) MessageChanged?.Invoke(this, change);
+        if (!ReferenceEquals(sender, _client) || !HasCommunicationPermission) return;
+        if (_archive is not null)
+        {
+            if (change.DeletedId > 0) _ = _archive.DeleteAsync(change.DeletedId);
+            else if (change.Message is { LobbyId: 0, Id: > 0 } message) _ = _archive.SaveAsync([message]);
+        }
+        MessageChanged?.Invoke(this, change);
     }
 }

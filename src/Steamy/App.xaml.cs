@@ -21,6 +21,8 @@ public partial class App : Application
     private static async Task AwaitTransparencyAsync() { if (_transparencyDismissed is not null) await _transparencyDismissed.Task; }
     private static TaskCompletionSource? _firstRunSetupDismissed;
     private UiResponsivenessMonitor? _responsivenessMonitor;
+    private SingleInstanceGuard? _instanceGuard;
+    private IBackgroundModeService? _backgroundMode;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -146,6 +148,16 @@ public partial class App : Application
             Shutdown(); return;
         }
 
+        // A second launch hands its request to the running window and leaves; it must never
+        // open a second Discord client against the same saved session.
+        _instanceGuard = SingleInstanceGuard.TryCreate(Steamy.Storage.AppDataPaths.Root);
+        if (_instanceGuard is null)
+        {
+            SingleInstanceGuard.Signal(Steamy.Storage.AppDataPaths.Root, e.Args.Contains("--discord-join", StringComparer.Ordinal));
+            Shutdown(0);
+            return;
+        }
+
         ApplySavedCulture();
         try { await new LocalGameCatalog().RetireLegacyEntriesAsync(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException) { Debug.WriteLine("Local catalog migration: " + error.GetType().Name); }
@@ -158,6 +170,8 @@ public partial class App : Application
         ApplySavedAppearance();
 
         var openSocial = DiscordIntegration.Enabled && e.Args.Contains("--discord-join", StringComparer.Ordinal);
+        var startHidden = e.Args.Contains("--background", StringComparer.Ordinal)
+            && Services.GetRequiredService<ISettingsService>().Load().KeepRunningInBackground;
         StartupTimings.Mark("Before MainWindow");
         var window = new MainWindow(openSocial, e.Args.Contains("--controller-setup", StringComparer.Ordinal));
         MainWindow = window;
@@ -175,7 +189,7 @@ public partial class App : Application
             { LogException("Optional tool discovery failed", error); }
         };
         window.ContentRendered += warmTools;
-        if (e.Args.Contains("--background-test", StringComparer.Ordinal))
+        if (startHidden || e.Args.Contains("--background-test", StringComparer.Ordinal))
         {
             // Keep the real render path active without taking focus or showing a taskbar entry.
             window.ShowActivated = false;
@@ -186,6 +200,14 @@ public partial class App : Application
         }
         window.Show();
         StartupTimings.Mark("After Show");
+        _backgroundMode = DiscordIntegration.Enabled ? Services.GetService<IBackgroundModeService>() : null;
+        _backgroundMode?.Attach(window, startHidden);
+        _instanceGuard.Bind(join => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_backgroundMode is not null) _backgroundMode.ShowWindow();
+            else { window.ShowActivated = true; window.ShowInTaskbar = true; window.Show(); window.Activate(); }
+            if (join && DiscordIntegration.Enabled) window.OpenSocialDock();
+        })));
         window.EnableControllerNavigation();
         (Services.GetRequiredService<IControllerGameProfiles>() as ControllerGameProfiles)?.Start();
         if (Services.GetRequiredService<ISettingsService>().Load().ControllerBackendEnabled) _ = RestoreControllersAsync();
@@ -293,8 +315,12 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _instanceGuard?.Dispose();
+        _instanceGuard = null;
         if (Services is null) { base.OnExit(e); return; }
         _responsivenessMonitor?.Dispose();
+        _backgroundMode?.Dispose();
+        _backgroundMode = null;
         if (DiscordIntegration.Enabled) (Services.GetService<IDiscordSocialService>() as IDisposable)?.Dispose();
         (Services.GetService<IControllerBackend>() as IDisposable)?.Dispose();
         (Services.GetService<IControllerGameProfiles>() as IDisposable)?.Dispose();

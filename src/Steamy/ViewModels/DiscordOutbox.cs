@@ -1,3 +1,4 @@
+using System.IO;
 using CommunityToolkit.Mvvm.Input;
 using Steamy.Services;
 
@@ -10,18 +11,49 @@ public sealed partial class DiscordFriendsViewModel
     private readonly HashSet<string> _sendingConversations = [];
     private CancellationTokenSource _outboxLifetime = new();
     private long _localMessageId;
+    private bool _uploadingAttachment;
     public IAsyncRelayCommand<DiscordChatMessage> RetryMessageCommand { get; private set; } = null!;
     public IRelayCommand<DiscordChatMessage> DismissLocalMessageCommand { get; private set; } = null!;
     private static string MessageConversation(DiscordChatMessage message) => message.LobbyId != 0 ? "party:" + message.LobbyId : "friend:" + message.PeerId;
     private async Task SendMessageAsync()
     {
         if (_editingMessage is { } editing) { await SaveEditAsync(editing); return; }
-        if (_chat is null || ConversationId == 0 || _sendingConversations.Contains(ConversationKey) || MessageDraft.Trim().Length is 0 or > 2000) return;
+        if (_chat is null || ConversationId == 0 || _sendingConversations.Contains(ConversationKey) || _uploadingAttachment) return;
+        var attachment = Attachment;
+        var text = MessageDraft.Trim();
+        if (text.Length == 0 && attachment is null) return;
+        if (attachment is not null)
+        {
+            var link = attachment.Url;
+            if (link is null)
+            {
+                if (attachment.LocalPath is not { } path || _uploads is null) { ChatStatus = "File uploads aren't available right now. Restart Steamy and try again."; return; }
+                _uploadingAttachment = true; RefreshWorkspaceCommands(); ChatStatus = $"Uploading {attachment.Name}…";
+                try
+                {
+                    using var uploadDeadline = CancellationTokenSource.CreateLinkedTokenSource(_outboxLifetime.Token);
+                    uploadDeadline.CancelAfter(TimeSpan.FromMinutes(10));
+                    link = await _uploads.UploadAsync(path, uploadDeadline.Token);
+                }
+                catch (OperationCanceledException) { ChatStatus = $"Uploading {attachment.Name} didn't finish. Try again."; return; }
+                catch (Exception error)
+                {
+                    ChatStatus = error is IOException or UnauthorizedAccessException or InvalidOperationException ? error.Message
+                        : $"Uploading {attachment.Name} failed. Check your connection and try again.";
+                    return;
+                }
+                finally { _uploadingAttachment = false; RefreshWorkspaceCommands(); }
+            }
+            text = AttachmentLink(text, attachment with { Url = link });
+            if (text.Length > 2000)
+            { ChatStatus = "The file link makes this message longer than Discord's 2000-character limit. Shorten your text first."; return; }
+        }
+        if (text.Length is 0 or > 2000) return;
         var nonce = Guid.NewGuid().ToString("N"); var id = ConversationId; var party = _partyChat;
         var message = new DiscordChatMessage(ulong.MaxValue - (ulong)Interlocked.Increment(ref _localMessageId), _discord.Snapshot.Profile?.Id ?? 0, party ? 0 : id, party ? id : 0, 0,
-            MessageDraft.Trim(), DateTimeOffset.UtcNow, true, false, false) { ClientNonce = nonce, DeliveryState = DiscordDeliveryState.Sending };
+            text, DateTimeOffset.UtcNow, true, false, false) { ClientNonce = nonce, DeliveryState = DiscordDeliveryState.Sending };
         var outgoing = new Outgoing(ConversationKey, id, party, message);
-        _outbox[nonce] = outgoing; MessageDraft = ""; _conversationDrafts.Remove(outgoing.Key); UpsertMessage(message);
+        _outbox[nonce] = outgoing; MessageDraft = ""; Attachment = null; _conversationDrafts.Remove(outgoing.Key); UpsertMessage(message);
         await DeliverAsync(outgoing);
     }
     private async Task DeliverAsync(Outgoing outgoing)

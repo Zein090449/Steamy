@@ -88,6 +88,7 @@ public sealed partial class DiscordSocialService : IDiscordSocialService, IDispo
     private readonly ISettingsService _settings;
     private readonly ISecureCredentialService _credentials;
     private readonly IDiscordConversationStore? _conversations;
+    private readonly IDiscordMessageArchive? _archive;
     private readonly Func<IDiscordSocialClient> _createClient;
     private readonly Func<bool> _sdkInstalled;
     private readonly SemaphoreSlim _gate = new(1);
@@ -107,12 +108,14 @@ public sealed partial class DiscordSocialService : IDiscordSocialService, IDispo
         : !_sdkInstalled() ? "Discord support isn't installed in this build yet. You can connect later."
         : "Connect to see your friends and send requests from Steamy.";
 
-    public DiscordSocialService(ISettingsService settings, ISecureCredentialService credentials, IDiscordConversationStore? conversations = null)
-        : this(settings, credentials, () => new HostedDiscordSdkClient(DiscordConfiguration.SdkDirectory), () => DiscordConfiguration.SdkInstalled, conversations) { }
+    public DiscordSocialService(ISettingsService settings, ISecureCredentialService credentials, IDiscordConversationStore? conversations = null,
+        IDiscordMessageArchive? archive = null)
+        : this(settings, credentials, () => new HostedDiscordSdkClient(DiscordConfiguration.SdkDirectory), () => DiscordConfiguration.SdkInstalled, conversations, archive) { }
 
     internal DiscordSocialService(ISettingsService settings, ISecureCredentialService credentials,
-        Func<IDiscordSocialClient> createClient, Func<bool> sdkInstalled, IDiscordConversationStore? conversations = null)
-    { _settings = settings; _credentials = credentials; _conversations = conversations; _createClient = createClient; _sdkInstalled = sdkInstalled; }
+        Func<IDiscordSocialClient> createClient, Func<bool> sdkInstalled, IDiscordConversationStore? conversations = null,
+        IDiscordMessageArchive? archive = null)
+    { _settings = settings; _credentials = credentials; _conversations = conversations; _archive = archive; _createClient = createClient; _sdkInstalled = sdkInstalled; }
 
     public async Task RestoreAsync(CancellationToken token = default)
     {

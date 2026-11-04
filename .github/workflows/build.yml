@@ -56,6 +56,25 @@ jobs:
             }
           }
 
+      - name: Preserve already published release files
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.ver.outputs.v }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $url = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/v$env:RELEASE_VERSION"
+          try {
+            $release = Invoke-RestMethod -Uri $url -Headers $headers
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+            $release = $null
+          }
+          $published = $null -ne $release -and -not $release.draft -and $null -ne $release.published_at
+          "published=$($published.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if ($published) { Write-Host 'Published release retained. Its download files and update checksums will not be replaced by this build.' }
+
       - name: Build the headless ControllerHost for integration tests
         shell: pwsh
         run: ./scripts/build-controller-host.ps1 -OutputDirectory tools/ControllerHost/runtime -SourcePackage
@@ -103,6 +122,12 @@ jobs:
       - name: Release notes and SHA-256 from the packaged ZIP
         run: python scripts/release_notes.py --version '${{ steps.ver.outputs.v }}' --archive 'Steamy-v${{ steps.ver.outputs.v }}.zip' --output release-notes.md
 
+      - name: Create incremental update package
+        if: steps.existing.outputs.published != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/create_delta_update.py --version '${{ steps.ver.outputs.v }}' --archive 'Steamy-v${{ steps.ver.outputs.v }}.zip' --output 'Steamy-v${{ steps.ver.outputs.v }}-delta.zip'
+
       - name: Remove the old separate downloader asset
         shell: pwsh
         env:
@@ -132,25 +157,6 @@ jobs:
             Write-Host "Removed obsolete standalone asset $oldAssetName"
           }
 
-      - name: Preserve already published release files
-        id: existing
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ steps.ver.outputs.v }}
-        run: |
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
-          $url = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/v$env:RELEASE_VERSION"
-          try {
-            $release = Invoke-RestMethod -Uri $url -Headers $headers
-          } catch {
-            if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
-            $release = $null
-          }
-          $published = $null -ne $release -and -not $release.draft -and $null -ne $release.published_at
-          "published=$($published.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          if ($published) { Write-Host 'Published release retained. Its download files and update checksums will not be replaced by this build.' }
-
       - name: Create Release
         if: steps.existing.outputs.published != 'true'
         uses: softprops/action-gh-release@v2
@@ -163,8 +169,28 @@ jobs:
             Steamy-v${{ steps.ver.outputs.v }}-Setup.exe
           body_path: release-notes.md
 
+      - name: Attach the incremental update package
+        if: steps.existing.outputs.published != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $delta = 'Steamy-v${{ steps.ver.outputs.v }}-delta.zip'
+          if (Test-Path -LiteralPath $delta) {
+            gh release upload 'v${{ steps.ver.outputs.v }}' $delta --clobber
+          } else {
+            Write-Host 'No incremental package; the full download will be used.'
+          }
+
       - name: Publish verified update metadata after the release exists
         if: steps.existing.outputs.published != 'true'
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/publish_update_manifest.py --version '${{ steps.ver.outputs.v }}' --archive 'Steamy-v${{ steps.ver.outputs.v }}.zip'
+        run: |
+          $delta = 'Steamy-v${{ steps.ver.outputs.v }}-delta.zip'
+          if (Test-Path -LiteralPath $delta) {
+            python scripts/publish_update_manifest.py --version '${{ steps.ver.outputs.v }}' --archive 'Steamy-v${{ steps.ver.outputs.v }}.zip' --delta-archive $delta
+          } else {
+            python scripts/publish_update_manifest.py --version '${{ steps.ver.outputs.v }}' --archive 'Steamy-v${{ steps.ver.outputs.v }}.zip'
+          }

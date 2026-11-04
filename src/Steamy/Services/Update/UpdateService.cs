@@ -9,7 +9,9 @@ using System.Text.Json;
 
 namespace Steamy.Services;
 
-public sealed record UpdateInfo(Version Version, string Tag, Uri AssetUrl, long AssetSize, string? Sha256 = null);
+public sealed record DeltaUpdate(Uri AssetUrl, long AssetSize, string? Sha256);
+
+public sealed record UpdateInfo(Version Version, string Tag, Uri AssetUrl, long AssetSize, string? Sha256 = null, DeltaUpdate? Delta = null);
 
 public enum UpdateStage { Downloading, Installing }
 
@@ -48,6 +50,7 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
     public const string Repository = "Zein090449/Steamy";
     private const string BackupSuffix = ".steamy-old";
     private const string ExecutableName = "Steamy.exe";
+    private const string DeltaManifestName = "delta-manifest.json";
 
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
@@ -143,14 +146,23 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
             || !Version.TryParse(tag[1..], out var version))
             throw new InvalidDataException("The update manifest has an invalid version.");
         var assets = manifest.GetProperty("assets");
-        if (assets.GetArrayLength() != 1) throw new InvalidDataException("The update manifest must identify one app ZIP.");
-        var asset = assets[0];
-        if (asset.GetProperty("name").GetString() != $"Steamy-{tag}.zip")
+        if (assets.GetArrayLength() is < 1 or > 2) throw new InvalidDataException("The update manifest must identify the app ZIP.");
+        JsonElement? fullAsset = null, deltaAsset = null;
+        foreach (var candidate in assets.EnumerateArray())
+        {
+            var name = candidate.GetProperty("name").GetString();
+            if (name == $"Steamy-{tag}.zip") fullAsset = candidate;
+            else if (name == $"Steamy-{tag}-delta.zip") deltaAsset = candidate;
+        }
+        if (fullAsset is not { } asset)
             throw new InvalidDataException("The app ZIP does not match the release.");
         var update = ReadAsset(asset, Normalize(version), tag);
         if (update.AssetUrl.AbsoluteUri != $"https://github.com/{Repository}/releases/download/{tag}/Steamy-{tag}.zip"
             || update.AssetSize <= 0 || update.Sha256 is null)
             throw new InvalidDataException("The update manifest has no verified official app ZIP.");
+        // An incremental package is optional; the full ZIP stays the source of truth.
+        if (deltaAsset is { } delta && TryReadDelta(delta, tag, out var incremental) && incremental is not null)
+            update = update with { Delta = incremental };
         return update.Version > Normalize(currentVersion) ? update : null;
     }
 
@@ -164,15 +176,42 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
         var version = Normalize(parsed);
         if (version <= Normalize(currentVersion)) return null;
 
-        JsonElement? legacyAsset = null;
+        JsonElement? fullAsset = null, legacyAsset = null, deltaAsset = null;
         foreach (var asset in release.GetProperty("assets").EnumerateArray())
         {
             var name = asset.GetProperty("name").GetString() ?? string.Empty;
-            if (name.Equals($"Steamy-{tag}.zip", StringComparison.OrdinalIgnoreCase))
-                return ReadAsset(asset, version, tag);
-            if (name.Equals("Steamy-latest.zip", StringComparison.OrdinalIgnoreCase)) legacyAsset = asset;
+            if (name.Equals($"Steamy-{tag}.zip", StringComparison.OrdinalIgnoreCase)) fullAsset = asset;
+            else if (name.Equals($"Steamy-{tag}-delta.zip", StringComparison.OrdinalIgnoreCase)) deltaAsset = asset;
+            else if (name.Equals("Steamy-latest.zip", StringComparison.OrdinalIgnoreCase)) legacyAsset = asset;
         }
-        return legacyAsset is { } fallback ? ReadAsset(fallback, version, tag) : null;
+        if ((fullAsset ?? legacyAsset) is not { } selected) return null;
+        var update = ReadAsset(selected, version, tag);
+        if (deltaAsset is { } delta && TryReadDelta(delta, tag, out var incremental) && incremental is not null)
+            update = update with { Delta = incremental };
+        return update;
+    }
+
+    private static bool TryReadDelta(JsonElement asset, string tag, out DeltaUpdate? delta)
+    {
+        delta = null;
+        try
+        {
+            var name = asset.GetProperty("name").GetString();
+            var url = asset.GetProperty("browser_download_url").GetString();
+            var size = asset.GetProperty("size").GetInt64();
+            var expected = $"https://github.com/{Repository}/releases/download/{tag}/Steamy-{tag}-delta.zip";
+            if (name != $"Steamy-{tag}-delta.zip" || url != expected || size <= 0) return false;
+            string? sha256 = null;
+            if (asset.TryGetProperty("digest", out var digest) && digest.ValueKind == JsonValueKind.String)
+            {
+                var value = digest.GetString() ?? "";
+                if (System.Text.RegularExpressions.Regex.IsMatch(value, "^sha256:[a-fA-F0-9]{64}$")) sha256 = value[7..];
+            }
+            if (sha256 is null) return false;
+            delta = new DeltaUpdate(new Uri(url), size, sha256);
+            return true;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or KeyNotFoundException or UriFormatException) { return false; }
     }
 
     private static UpdateInfo ReadAsset(JsonElement asset, Version version, string tag)
@@ -194,19 +233,28 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
         EnsureWritable(_installDirectory);
         Directory.CreateDirectory(_workDirectory);
         var archive = Path.Combine(_workDirectory, $"Steamy-{update.Tag}.zip");
+        var deltaArchive = Path.Combine(_workDirectory, $"Steamy-{update.Tag}-delta.zip");
         var staging = Path.Combine(_workDirectory, "staging");
+        var deltaStaging = Path.Combine(_workDirectory, "delta-staging");
 
         try
         {
-            await DownloadAsync(update, archive, progress, cancellationToken).ConfigureAwait(false);
-
-            if (update.Sha256 is { } expected)
+            if (update.Delta is { } delta)
             {
-                await using var stream = File.OpenRead(archive);
-                var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
-                if (!digest.Equals(expected, StringComparison.OrdinalIgnoreCase))
-                    throw new UpdateException("The update checksum does not match. Nothing was installed; please try again.");
+                try
+                {
+                    await InstallDeltaAsync(update, delta, deltaArchive, deltaStaging, staging, progress, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception exception) when (exception is UpdateException or IOException or UnauthorizedAccessException or InvalidDataException or JsonException)
+                {
+                    // The incremental package is a shortcut only; the verified full ZIP always remains available.
+                }
             }
+
+            await DownloadAsync(update.AssetUrl, update.AssetSize, archive, progress, cancellationToken).ConfigureAwait(false);
+            await VerifyDigestAsync(archive, update.Sha256, cancellationToken).ConfigureAwait(false);
             progress?.Report(new UpdateProgress(UpdateStage.Installing, 0, 0, 0, 0));
             if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
             try
@@ -227,21 +275,125 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
         finally
         {
             TryDelete(archive);
-            try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            TryDelete(deltaArchive);
+            foreach (var folder in new[] { staging, deltaStaging })
+            {
+                try { if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
         }
     }
 
-    private async Task DownloadAsync(UpdateInfo update, string destination, IProgress<UpdateProgress>? progress, CancellationToken cancellationToken)
+    /// <summary>
+    /// Applies only the changed files. The current installation is copied to staging first, so
+    /// the final swap stays all-or-nothing exactly like a full update.
+    /// </summary>
+    private async Task InstallDeltaAsync(UpdateInfo update, DeltaUpdate delta, string archive, string deltaStaging, string staging,
+        IProgress<UpdateProgress>? progress, CancellationToken cancellationToken)
+    {
+        await DownloadAsync(delta.AssetUrl, delta.AssetSize, archive, progress, cancellationToken).ConfigureAwait(false);
+        await VerifyDigestAsync(archive, delta.Sha256, cancellationToken).ConfigureAwait(false);
+        if (Directory.Exists(deltaStaging)) Directory.Delete(deltaStaging, recursive: true);
+        try
+        {
+            ZipFile.ExtractToDirectory(archive, deltaStaging);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new UpdateException("The incremental update is damaged. Please try again.", exception);
+        }
+
+        var manifestPath = Path.Combine(deltaStaging, DeltaManifestName);
+        if (!File.Exists(manifestPath)) throw new UpdateException("The incremental update has no manifest.");
+        var manifest = JsonSerializer.Deserialize<DeltaManifest>(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (manifest is null || manifest.Format != 1 || manifest.Files is null
+            || !string.Equals(manifest.Tag, update.Tag, StringComparison.OrdinalIgnoreCase))
+            throw new UpdateException("The incremental update does not match this release.");
+        // Only the immediately previous release ships a delta; older installs use the full ZIP.
+        if (!string.Equals(manifest.BaseTag, "v" + CurrentVersion, StringComparison.OrdinalIgnoreCase))
+            throw new UpdateException("This installation can't use the incremental update.");
+
+        progress?.Report(new UpdateProgress(UpdateStage.Installing, 0, 0, 0, 0));
+        if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+        Directory.CreateDirectory(staging);
+        CopyInstallation(_installDirectory, staging);
+
+        foreach (var file in manifest.Files)
+        {
+            if (file.Path is null || file.Sha256 is null) throw new UpdateException("The incremental update is incomplete.");
+            var relative = SafeRelativePath(file.Path);
+            var source = Path.Combine(deltaStaging, relative);
+            if (!File.Exists(source)) throw new UpdateException("The incremental update is missing a file.");
+            await using (var stream = File.OpenRead(source))
+            {
+                var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+                if (!digest.Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new UpdateException("The incremental update failed verification.");
+            }
+            var target = Path.Combine(staging, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(source, target, overwrite: true);
+        }
+        foreach (var path in manifest.Deleted ?? [])
+        {
+            var target = Path.Combine(staging, SafeRelativePath(path));
+            if (File.Exists(target)) File.Delete(target);
+        }
+        if (!File.Exists(Path.Combine(staging, ExecutableName)))
+            throw new UpdateException($"The incremental update does not contain {ExecutableName}.");
+
+        cancellationToken.ThrowIfCancellationRequested();
+        ReplaceFiles(staging, _installDirectory, progress, (manifest.Deleted ?? []).Select(SafeRelativePath).ToArray());
+    }
+
+    private static void CopyInstallation(string source, string destination)
+    {
+        var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+        {
+            if (file.EndsWith(BackupSuffix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (Path.GetFullPath(file).StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    /// <summary>Rejects absolute paths and parent traversal in a package manifest.</summary>
+    private static string SafeRelativePath(string path)
+    {
+        var relative = path.Replace('\\', '/');
+        var segments = relative.Split('/');
+        if (relative.Length == 0 || Path.IsPathRooted(path) || segments.Any(segment => segment is "" or "." or ".."))
+            throw new UpdateException("The incremental update has an invalid file path.");
+        return Path.Combine(segments);
+    }
+
+    private static async Task VerifyDigestAsync(string archive, string? expected, CancellationToken cancellationToken)
+    {
+        if (expected is null) return;
+        await using var stream = File.OpenRead(archive);
+        var digest = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
+        if (!digest.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            throw new UpdateException("The update checksum does not match. Nothing was installed; please try again.");
+    }
+
+    private sealed record DeltaManifest(int Format, string Tag, string BaseTag, List<DeltaFile>? Files, List<string>? Deleted);
+    private sealed record DeltaFile(string Path, string Sha256, long Size);
+
+    private async Task DownloadAsync(Uri assetUrl, long assetSize, string destination, IProgress<UpdateProgress>? progress, CancellationToken cancellationToken)
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, update.AssetUrl);
+            using var request = new HttpRequestMessage(HttpMethod.Get, assetUrl);
             request.Headers.UserAgent.ParseAdd($"Steamy/{CurrentVersion}");
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 throw new UpdateException($"The download failed with HTTP {(int)response.StatusCode}.");
 
-            var total = response.Content.Headers.ContentLength ?? update.AssetSize;
+            var total = response.Content.Headers.ContentLength ?? assetSize;
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             await using (var target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true))
             {
@@ -266,7 +418,7 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
                     progress?.Report(new UpdateProgress(UpdateStage.Downloading, total > 0 ? received * 100.0 / total : 0, received, total, speed));
                 }
 
-                if (update.AssetSize > 0 && received != update.AssetSize)
+                if (assetSize > 0 && received != assetSize)
                     throw new UpdateException("The download was incomplete. Please try again.");
             }
         }
@@ -276,7 +428,7 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
         }
     }
 
-    private static void ReplaceFiles(string source, string destination, IProgress<UpdateProgress>? progress)
+    private static void ReplaceFiles(string source, string destination, IProgress<UpdateProgress>? progress, IReadOnlyList<string>? removed = null)
     {
         var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories);
         var movedAside = new List<(string Target, string Backup)>();
@@ -284,6 +436,15 @@ public sealed class GitHubUpdateService : IUpdateService, IDisposable
 
         try
         {
+            // Files that no longer exist in the new version are retired with the same rollback as replaced ones.
+            foreach (var relative in removed ?? [])
+            {
+                var target = Path.Combine(destination, relative);
+                if (!File.Exists(target)) continue;
+                var backup = FreeBackupPath(target);
+                File.Move(target, backup);
+                movedAside.Add((target, backup));
+            }
             for (var index = 0; index < files.Length; index++)
             {
                 var relative = Path.GetRelativePath(source, files[index]);

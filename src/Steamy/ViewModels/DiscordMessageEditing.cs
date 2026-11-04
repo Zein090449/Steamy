@@ -30,6 +30,7 @@ public sealed partial class DiscordFriendsViewModel
             || MessageConversation(message) != ConversationKey) return;
         if (_editingMessage?.Id == message.Id) return;
         _draftBeforeEdit = MessageDraft;
+        Attachment = null;
         _editingMessage = message;
         MessageDraft = message.Content;
         ChatStatus = "Editing your message. Press Esc to cancel.";

@@ -42,6 +42,7 @@ public partial class FriendsPage : Page
         {
             UpdateChatExposure(); model.Messages.CollectionChanged += MessagesChanged; model.PropertyChanged += ConversationChanged; model.ConversationChanging += BeforeConversationChanges;
             ((GifPickerViewModel)ConversationGifPicker.DataContext).Picked += GifPicked;
+            ((StickerFavoritesViewModel)ConversationStickerPicker.DataContext).Picked += StickerPicked;
             ConversationEmojiPicker.Picked += EmojiPicked;
             ChatMessages.ApplyTemplate(); _messageScroll = FindScroll(ChatMessages);
             if (_messageScroll is not null)
@@ -58,8 +59,9 @@ public partial class FriendsPage : Page
             SaveReadPosition(model); _restoreGeneration++; _restorePending = false;
             model.SetChatVisible(false); model.Messages.CollectionChanged -= MessagesChanged; model.PropertyChanged -= ConversationChanged; model.ConversationChanging -= BeforeConversationChanges;
             ((GifPickerViewModel)ConversationGifPicker.DataContext).Picked -= GifPicked;
+            ((StickerFavoritesViewModel)ConversationStickerPicker.DataContext).Picked -= StickerPicked;
             ConversationEmojiPicker.Picked -= EmojiPicked;
-            GifPickerPopup.IsOpen = false; EmojiPickerPopup.IsOpen = false; ProfilePopup.IsOpen = false; QuickSwitcherPopup.IsOpen = false;
+            GifPickerPopup.IsOpen = false; StickerFavoritesPopup.IsOpen = false; EmojiPickerPopup.IsOpen = false; ProfilePopup.IsOpen = false; QuickSwitcherPopup.IsOpen = false;
             if (_messageScroll is not null)
             {
                 _messageScroll.ScrollChanged -= ChatScrolled;
@@ -201,10 +203,44 @@ public partial class FriendsPage : Page
     private void CompactParty_Click(object sender, RoutedEventArgs args)
     { if (sender is UIElement target) CompactPartyPopup.PlacementTarget = target; CompactPartyPopup.IsOpen = !CompactPartyPopup.IsOpen; }
     private void GifPicker_Click(object sender, RoutedEventArgs args) => GifPickerPopup.IsOpen = !GifPickerPopup.IsOpen;
+    private void StickerFavorites_Click(object sender, RoutedEventArgs args)
+    {
+        if (StickerFavoritesPopup.IsOpen) { StickerFavoritesPopup.IsOpen = false; return; }
+        ((StickerFavoritesViewModel)ConversationStickerPicker.DataContext).Prepare();
+        StickerFavoritesPopup.IsOpen = true;
+        ConversationStickerPicker.FocusInput();
+    }
     private void EmojiPicker_Click(object sender, RoutedEventArgs args)
     {
         if (DataContext is DiscordFriendsViewModel model) ConversationEmojiPicker.Recents = model.RecentEmojis;
         EmojiPickerPopup.IsOpen = !EmojiPickerPopup.IsOpen;
+    }
+    private bool _composerPlusWasOpen;
+    private void ComposerPlus_PreviewMouseDown(object sender, MouseButtonEventArgs args) => _composerPlusWasOpen = ComposerPlusPopup.IsOpen;
+    private void ComposerPlus_Click(object sender, RoutedEventArgs args)
+    {
+        if (_composerPlusWasOpen) { ComposerPlusPopup.IsOpen = false; return; }
+        ComposerPlusPopup.IsOpen = true;
+    }
+    private void ComposerUpload_Click(object sender, RoutedEventArgs args)
+    {
+        ComposerPlusPopup.IsOpen = false;
+        AttachFile_Click(sender, args);
+    }
+    private void ComposerGif_Click(object sender, RoutedEventArgs args)
+    {
+        ComposerPlusPopup.IsOpen = false;
+        GifPicker_Click(GifPickerButton, args);
+    }
+    private void ComposerSticker_Click(object sender, RoutedEventArgs args)
+    {
+        ComposerPlusPopup.IsOpen = false;
+        StickerFavorites_Click(StickerFavoritesButton, args);
+    }
+    private void ComposerEmoji_Click(object sender, RoutedEventArgs args)
+    {
+        ComposerPlusPopup.IsOpen = false;
+        EmojiPicker_Click(EmojiPickerButton, args);
     }
     private void EmojiPicked(object? sender, string emoji)
     {
@@ -276,17 +312,38 @@ public partial class FriendsPage : Page
     internal bool CloseTransientPanels()
     {
         if (QuickSwitcherPopup.IsOpen) { QuickSwitcherPopup.IsOpen = false; return true; }
+        if (ComposerPlusPopup.IsOpen) { ComposerPlusPopup.IsOpen = false; return true; }
         if (EmojiPickerPopup.IsOpen) { EmojiPickerPopup.IsOpen = false; return true; }
         if (GifPickerPopup.IsOpen) { GifPickerPopup.IsOpen = false; return true; }
+        if (StickerFavoritesPopup.IsOpen) { StickerFavoritesPopup.IsOpen = false; return true; }
         if (ProfilePopup.IsOpen) { ProfilePopup.IsOpen = false; return true; }
         if (CompactPartyPopup.IsOpen) { CompactPartyPopup.IsOpen = false; return true; }
         return false;
     }
     private void GifPicked(object? sender, string link)
     {
-        if (DataContext is not DiscordFriendsViewModel model || model.MessageDraft.Length + link.Length + 1 > 2000) return;
-        model.MessageDraft = model.MessageDraft.Length == 0 ? link : model.MessageDraft.TrimEnd() + "\n" + link;
-        GifPickerPopup.IsOpen = false; MessageComposer.Focus(); MessageComposer.CaretIndex = model.MessageDraft.Length;
+        if (DataContext is DiscordFriendsViewModel model) model.AttachMedia("GIF", link);
+        GifPickerPopup.IsOpen = false; MessageComposer.Focus();
+    }
+    private void StickerPicked(object? sender, string link)
+    {
+        if (DataContext is DiscordFriendsViewModel model) model.AttachMedia("Sticker", link);
+        StickerFavoritesPopup.IsOpen = false; MessageComposer.Focus();
+    }
+    private void AttachFile_Click(object sender, RoutedEventArgs args)
+    {
+        if (DataContext is not DiscordFriendsViewModel model || model.IsEditing) return;
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Attach a file",
+            Filter = "Images|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp;*.ico|All files|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
+        model.AttachFile(dialog.FileName);
+        MessageComposer.Focus();
+        MessageComposer.CaretIndex = MessageComposer.Text.Length;
     }
     internal void RevealParty() => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
     {

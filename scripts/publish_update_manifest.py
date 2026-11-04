@@ -10,18 +10,10 @@ import urllib.error
 from publish_screenshots import COMMIT_IDENTITY, GitHubApi
 
 
-def manifest(release, archive, repository, app_payload=False):
-    tag = release.get('tag_name', '')
-    if not re.fullmatch(r'v\d+\.\d+\.\d+(?:\.\d+)?', tag):
-        raise ValueError('Invalid release version')
-    if release.get('draft') is not False or release.get('prerelease') is not False or not release.get('published_at'):
-        raise ValueError('A published regular release is required')
-    name = f'Steamy-{tag}-app.zip' if app_payload else f'Steamy-{tag}.zip'
-    if archive.name != name:
-        raise ValueError('Archive does not match the release')
+def verified_asset(release, archive, repository, tag, name):
     assets = [asset for asset in release.get('assets', []) if asset.get('name') == name]
     if len(assets) != 1:
-        raise ValueError('One versioned app ZIP is required')
+        raise ValueError(f'One {name} is required')
     asset = assets[0]
     with archive.open('rb') as stream:
         digest = 'sha256:' + hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -30,8 +22,28 @@ def manifest(release, archive, repository, app_payload=False):
     url = f'https://github.com/{repository}/releases/download/{tag}/{name}'
     if asset.get('browser_download_url') != url:
         raise ValueError('Unexpected release download URL')
+    return {'name': name, 'browser_download_url': url, 'size': asset['size'], 'digest': digest}
+
+
+def manifest(release, archive, repository, app_payload=False, delta_archive=None):
+    tag = release.get('tag_name', '')
+    if not re.fullmatch(r'v\d+\.\d+\.\d+(?:\.\d+)?', tag):
+        raise ValueError('Invalid release version')
+    if release.get('draft') is not False or release.get('prerelease') is not False or not release.get('published_at'):
+        raise ValueError('A published regular release is required')
+    name = f'Steamy-{tag}-app.zip' if app_payload else f'Steamy-{tag}.zip'
+    if archive.name != name:
+        raise ValueError('Archive does not match the release')
+    assets = [verified_asset(release, archive, repository, tag, name)]
+    # The incremental package is optional: only the latest manifest advertises it,
+    # and the app always falls back to the full ZIP when it cannot be used.
+    if delta_archive is not None:
+        delta_name = f'Steamy-{tag}-delta.zip'
+        if delta_archive.name != delta_name:
+            raise ValueError('Delta archive does not match the release')
+        assets.append(verified_asset(release, delta_archive, repository, tag, delta_name))
     return {'tag_name': tag, 'draft': False, 'prerelease': False, 'published_at': release['published_at'],
-            'assets': [{'name': name, 'browser_download_url': url, 'size': asset['size'], 'digest': digest}]}
+            'assets': assets}
 
 
 def publish(api, description, path='updates/latest.json'):
@@ -68,10 +80,11 @@ if __name__ == '__main__':
     parser.add_argument('--version', required=True)
     parser.add_argument('--archive', required=True, type=Path)
     parser.add_argument('--app-archive', type=Path)
+    parser.add_argument('--delta-archive', type=Path)
     args = parser.parse_args()
     repository = os.environ['GITHUB_REPOSITORY']
     api = GitHubApi(repository, os.environ['GITHUB_TOKEN'])
     release = api('GET', '/releases/tags/v' + args.version)
-    print(publish(api, manifest(release, args.archive, repository)))
+    print(publish(api, manifest(release, args.archive, repository, delta_archive=args.delta_archive)))
     installer = manifest(release, args.app_archive, repository, app_payload=True) if args.app_archive else manifest(release, args.archive, repository)
     print(publish(api, installer, 'updates/installer.json'))

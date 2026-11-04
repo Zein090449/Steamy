@@ -695,6 +695,10 @@ public sealed class AppSettings : ObservableObject
     public bool Notifications { get => _notifications; set => SetProperty(ref _notifications, value); }
     private bool _discordAutoConnect = true;
     public bool DiscordAutoConnect { get => _discordAutoConnect; set => SetProperty(ref _discordAutoConnect, value); }
+    private bool _keepRunningInBackground;
+    public bool KeepRunningInBackground { get => _keepRunningInBackground; set => SetProperty(ref _keepRunningInBackground, value); }
+    private bool _startWithWindows;
+    public bool StartWithWindows { get => _startWithWindows; set => SetProperty(ref _startWithWindows, value); }
     public bool AutoRefresh { get => _autoRefresh; set => SetProperty(ref _autoRefresh, value); }
     public bool ConfirmBeforeDelete { get => _confirmBeforeDelete; set => SetProperty(ref _confirmBeforeDelete, value); }
     public string SteamApiUrl { get => _steamApiUrl; set => SetProperty(ref _steamApiUrl, value); }
@@ -725,11 +729,15 @@ public sealed class AppSettings : ObservableObject
     // GIF search keys are public client application keys, never Discord credentials.
     private string _gifProvider = "TENOR", _gifApiKey = "";
     private string[] _gifFavoriteIds = [];
+    private string[] _stickerFavoriteUrls = [];
     private string[] _recentEmojis = [];
     private string[] _easterEggs = [];
     public string GifProvider { get => _gifProvider; set => SetProperty(ref _gifProvider, value); }
     public string GifApiKey { get => _gifApiKey; set => SetProperty(ref _gifApiKey, value); }
     public string[] GifFavoriteIds { get => _gifFavoriteIds; set => SetProperty(ref _gifFavoriteIds, value ?? []); }
+
+    /// <summary>Discord sticker CDN links the user saved for reuse, newest first.</summary>
+    public string[] StickerFavoriteUrls { get => _stickerFavoriteUrls; set => SetProperty(ref _stickerFavoriteUrls, value ?? []); }
 
     /// <summary>Recently picked emoji (unicode), newest first. The emoji picker shares one recents list.</summary>
     public string[] RecentEmojis { get => _recentEmojis; set => SetProperty(ref _recentEmojis, value ?? []); }

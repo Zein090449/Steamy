@@ -44,6 +44,27 @@ class UpdateManifestTests(unittest.TestCase):
         self.assertIn('Skipped', publish(api, {'tag_name': 'v0.4.16'}))
         self.assertEqual(calls, ['/releases/latest'])
 
+    def test_latest_manifest_advertises_only_verified_incremental_packages(self):
+        with tempfile.TemporaryDirectory() as folder:
+            archive = Path(folder) / 'Steamy-v0.8.2.2.zip'
+            archive.write_bytes(b'full package fixture')
+            delta = Path(folder) / 'Steamy-v0.8.2.2-delta.zip'
+            delta.write_bytes(b'incremental package fixture')
+
+            def entry(path, tag):
+                return {'name': path.name, 'size': path.stat().st_size,
+                        'browser_download_url': f'https://github.com/Zein090449/Steamy/releases/download/{tag}/' + path.name,
+                        'digest': 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()}
+
+            release = {'tag_name': 'v0.8.2.2', 'draft': False, 'prerelease': False,
+                       'published_at': '2026-11-04T10:00:00Z', 'assets': [entry(archive, 'v0.8.2.2'), entry(delta, 'v0.8.2.2')]}
+            description = manifest(release, archive, 'Zein090449/Steamy', delta_archive=delta)
+            self.assertEqual([asset['name'] for asset in description['assets']],
+                             ['Steamy-v0.8.2.2.zip', 'Steamy-v0.8.2.2-delta.zip'])
+            delta.write_bytes(b'tampered incremental package')
+            with self.assertRaises(ValueError):
+                manifest(release, archive, 'Zein090449/Steamy', delta_archive=delta)
+
     def test_installer_manifest_verifies_separate_payload_without_changing_legacy_path(self):
         with tempfile.TemporaryDirectory() as folder:
             archive = Path(folder) / 'Steamy-v0.7.0-app.zip'
