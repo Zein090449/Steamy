@@ -3,6 +3,18 @@
 Each GitHub release uses the section of its version as its release notes.
 Add a new `## x.y.z` section at the top before tagging.
 
+## 0.8.2.2
+
+### Incremental updates, attachments, and calmer chat headers
+
+- **Incremental updates:** Updates now download only the files that changed since your installed version. Every file is verified against its SHA-256 hash before anything is replaced, and the app falls back to the full download whenever the incremental package does not apply.
+- **Upload files and images:** The composer can attach images and other files up to 200 MB. Files are uploaded to catbox.moe when you send and shared as a link; images and GIFs still show inline in Discord.
+- **New plus menu:** The plus button at the left of the composer opens one menu for Upload a file, Choose a GIF, Favorite stickers, and Emoji, mirroring Discord's attachment menu.
+- **Attachment preview:** A chosen GIF, sticker, or local image appears in an attachment chip above the composer with its name and a preview, so you can review it before sending.
+- **Five-minute profile headers:** Consecutive messages only show the author's avatar and name once every five minutes instead of repeating the profile on every message. Your own messages stay right-aligned without an avatar.
+- **Sticker favorites and chat archive:** Saved stickers are reusable from the composer, and direct-message history is archived locally so conversations load from cache while Discord catches up.
+- **Background mode:** Steamy can keep running in the notification area and optionally start with Windows.
+
 ## 0.8.2.1
 
 ### Friends available in official builds
