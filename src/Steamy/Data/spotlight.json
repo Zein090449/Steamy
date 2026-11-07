@@ -1,7 +1,23 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-06T14:11:51.525803+00:00",
+  "updatedAt": "2026-11-07T12:54:56.829157+00:00",
   "games": [
+    {
+      "appId": 4530370,
+      "name": "Football Manager 27",
+      "description": "Choose the club. Shape the squad. Set the tactics. Chase the future only you can see. FM27 is where your footballing beliefs become a reality. Make The Call.",
+      "genres": "Simulation · Sports · Strategy",
+      "publisher": "SEGA",
+      "comingSoon": true,
+      "featured": false,
+      "releaseLabel": "Nov 10, 2026",
+      "releaseDate": "2026-11-10",
+      "storeUrl": "https://store.steampowered.com/app/4530370/",
+      "heroUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4530370/d38e5bf84f475381c6146e2d54f03d1db5292f10/library_hero_2x.jpg?t=1793982134",
+      "headerUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4530370/1827516e497f3ddd2023b5ba3cd354af34a3548b/header_alt_assets_0_2x.jpg?t=1793982134",
+      "portraitUrl": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4530370/7ed4ea902189db0f278ae069ff5bfde4f601de93/library_capsule_2x.jpg?t=1793982134",
+      "releaseTime": "2026-11-10T16:00:00+00:00"
+    },
     {
       "appId": 2272360,
       "name": "Warhammer 40,000: Dawn of War IV",
