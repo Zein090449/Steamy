@@ -39,7 +39,11 @@ public sealed class CatboxFileUploadService : IFileUploadService
         upload.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         content.Add(upload, "fileToUpload", file.Name);
 
-        using var response = await _http.PostAsync(Endpoint, content, cancellationToken).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = content };
+        // Cloudflare in front of catbox closes connections that arrive without a User-Agent.
+        request.Headers.UserAgent.ParseAdd("Steamy/0.8");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var link = (await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)).Trim();
         if (!response.IsSuccessStatusCode || !Uri.TryCreate(link, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttps || uri.Host != "files.catbox.moe")

@@ -121,7 +121,7 @@ public sealed partial class LibrarySearchLifetimeTests
             await model.OnNavigatedFromAsync();
             await load.WaitAsync(TimeSpan.FromSeconds(1));
             Assert.InRange(catalog.Calls, 1, 4);
-            Assert.Equal(new[] { "All genres" }, model.GenreFilters);
+            Assert.Empty(model.GenreFilters);
             Assert.False(catalog.Response.Task.IsCompleted);
         }
         finally

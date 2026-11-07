@@ -20,7 +20,8 @@ public static partial class ChatMediaPolicy
         || host.EndsWith(".giphy.com", StringComparison.OrdinalIgnoreCase)
         || host is "static.klipy.com" or "static1.klipy.com" or "static2.klipy.com" || host.EndsWith(".klipy.com", StringComparison.OrdinalIgnoreCase)
         || host.EndsWith(".tenor.com", StringComparison.OrdinalIgnoreCase)
-        || host is "i.imgur.com" or "i.redd.it" or "preview.redd.it" or "external-preview.redd.it";
+        || host is "i.imgur.com" or "i.redd.it" or "preview.redd.it" or "external-preview.redd.it"
+        || host.Equals("files.catbox.moe", StringComparison.OrdinalIgnoreCase);
     // GIF share pages (tenor/imgur/klipy/giphy) do not point at the media file itself; the loader resolves them to the embedded image.
     public static bool IsPageUri(Uri uri) => uri.IsAbsoluteUri && uri.Scheme == "https" && uri.IsDefaultPort && uri.UserInfo.Length == 0
         && (uri.Host is "tenor.com" or "imgur.com" or "klipy.com" or "giphy.com"

@@ -1416,6 +1416,14 @@ public class OfflineServiceProxy : DispatchProxy
                 source == ManifestSource.Sushi ? "Free Lua metadata and depot manifests · no API key" : $"{source} manifest source",
                 "https://example.invalid/", source is ManifestSource.Ryuu or ManifestSource.Hubcap or ManifestSource.DepotBox)).ToArray();
         if (method.DeclaringType == typeof(IFreeManifestCatalogService)) return Task.FromResult(new FreeManifestIndex(true, ScreenshotCatalog?.Select(item => item.AppId).ToHashSet() ?? new HashSet<int> { 10 }, "Offline fixture"));
+        if (method.DeclaringType == typeof(IEmulatorInstallService))
+        {
+            var root = Path.Combine(Path.GetTempPath(), "Steamy-smoke-emulators");
+            if (method.Name == "get_Root") return root;
+            if (method.Name == nameof(IEmulatorInstallService.GetState))
+                return new EmulatorInstallState(false, null, Path.Combine(root, ((EmulatorDefinition)args![0]!).Id), null);
+            if (method.Name == nameof(IEmulatorInstallService.GetGames)) return Array.Empty<EmulatorGame>();
+        }
         if (method.Name == nameof(IDisposable.Dispose)) return null;
         throw new InvalidOperationException($"UI smoke attempted an external operation: {method.DeclaringType?.Name}.{method.Name}");
     }

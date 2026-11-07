@@ -33,6 +33,8 @@ public sealed partial class PageSmokeTests
         ((RadioButton)setup.FindName("LightAppearance")).IsChecked = true;
         var trailers = (Wpf.Ui.Controls.ToggleSwitch)setup.FindName("TrailerPreviewsToggle");
         Assert.True(trailers.IsChecked); trailers.IsChecked = false;
+        var sidebar = (Wpf.Ui.Controls.ToggleSwitch)setup.FindName("SidebarToggle");
+        Assert.True(sidebar.IsChecked); sidebar.IsChecked = false;
         var backgrounds = (Steamy.Controls.BackgroundOptions)setup.FindName("SetupBackgroundPreferences");
         ((Wpf.Ui.Controls.ToggleSwitch)backgrounds.FindName("AmbientToggle")).IsChecked = false;
         ((TextBox)backgrounds.FindName("ColorHex")).Text = "#314A72";
@@ -61,6 +63,7 @@ public sealed partial class PageSmokeTests
         Assert.Equal(germanLanguage, settings.Load().Language);
         Assert.Equal("Light", settings.Load().Appearance);
         Assert.False(settings.Load().AutoplayTrailers);
+        Assert.False(settings.Load().ShowSidebar);
         Assert.False(settings.Load().AmbientEnabled);
         Assert.Equal("#314A72", settings.Load().BackgroundColor);
         Assert.False(UiThemeService.AmbientEnabled);

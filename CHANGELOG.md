@@ -3,6 +3,18 @@
 Each GitHub release uses the section of its version as its release notes.
 Add a new `## x.y.z` section at the top before tagging.
 
+## 0.8.3
+
+### Emulated games, an Emulators page, and personalization
+
+- **Emulated games library:** A new "Emulated games" mode browses dlpsgame.com and downloads games with dlps_downloader — no terminal needed. Once a game is in your download folder, its Download button becomes Play and launches the matching installed emulator.
+- **Bundled dlps_downloader:** The dlps_downloader CLI now ships inside the app next to Steamy.exe with its dependencies, so Steamy detects it automatically. Running downloads requires Node.js on your PC.
+- **Emulators page:** Download, install, and launch emulators from a dedicated page, and keep the games you add to each one. Steamy supplies the emulator itself; you bring your own game files.
+- **Emulated game details:** Emulated titles get their own details view with the emulator, platform, game file, system requirements, and a Play button.
+- **Automatic exFAT extraction:** Playing a game stored as an `.exfat` disk image mounts it read-only with OSFMount, copies the files out, dismounts, and launches the extracted folder.
+- **Personalization:** A new Settings section lets you hide the navigation sidebar and use the top bar instead, show compact library covers, and see the app version. The first-run setup asks about the sidebar too.
+- **Reliable file uploads:** Chat attachments sent to catbox.moe now include a User-Agent so uploads succeed behind Cloudflare, and catbox links render inline.
+
 ## 0.8.2.2
 
 ### Incremental updates, attachments, and calmer chat headers

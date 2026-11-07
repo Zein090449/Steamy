@@ -59,6 +59,7 @@ public partial class FirstRunSetup : UserControl
         LightAppearance.IsChecked = savedAppearance.Equals("Light", StringComparison.OrdinalIgnoreCase);
         DarkAppearance.IsChecked = savedAppearance.Equals("Dark", StringComparison.OrdinalIgnoreCase);
         TrailerPreviewsToggle.IsChecked = _settings.AutoplayTrailers;
+        SidebarToggle.IsChecked = _settings.ShowSidebar;
 
         var detectedSteamRoot = SteamLibraryService.FindSteamRoot();
         SteamFolderText.Text = !string.IsNullOrWhiteSpace(_settings.SteamLibraryPath)
@@ -272,6 +273,7 @@ public partial class FirstRunSetup : UserControl
                 _settings.AutoResume = ResumeCheck.IsChecked == true;
                 _settings.UseLancache = LancacheCheck.IsChecked == true;
                 _settings.AutoplayTrailers = TrailerPreviewsToggle.IsChecked == true;
+                _settings.ShowSidebar = SidebarToggle.IsChecked == true;
             }
 
             _settings.FirstRunCompleted = true;
@@ -289,6 +291,7 @@ public partial class FirstRunSetup : UserControl
                 UiThemeService.ConfigureBackground(_settings);
                 MotionPreferences.ConfigureTrailers(_settings.AutoplayTrailers);
                 App.ApplyCulture(_settings.Language);
+                (Window.GetWindow(this) as MainWindow)?.ApplySidebarPreference(_settings.ShowSidebar);
             }
             Completed?.Invoke(this, EventArgs.Empty);
         }

@@ -96,6 +96,9 @@
         <Setter TargetName="DrawerHeader" Property="Visibility" Value="Visible" />
         <Setter TargetName="MenuLauncher" Property="Margin" Value="0,0,16,0" />
       </Trigger>
+      <Trigger Property="IsPaneToggleVisible" Value="False">
+        <Setter TargetName="PART_ToggleButton" Property="Visibility" Value="Collapsed" />
+      </Trigger>
     </ControlTemplate.Triggers>
   </ControlTemplate>
 </ResourceDictionary>

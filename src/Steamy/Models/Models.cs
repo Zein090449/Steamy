@@ -615,6 +615,7 @@ public sealed class AppSettings : ObservableObject
     private bool _reduceEffects;
     private bool _autoplayTrailers = true;
     private bool _ambientEnabled = true;
+    private bool _showSidebar = true;
     private string _backgroundColor = "#FFFFFF";
     private bool _trackPlayTime = true;
     private bool _dashboardSearch;
@@ -734,6 +735,14 @@ public sealed class AppSettings : ObservableObject
     private string[] _easterEggs = [];
     public string GifProvider { get => _gifProvider; set => SetProperty(ref _gifProvider, value); }
     public string GifApiKey { get => _gifApiKey; set => SetProperty(ref _gifApiKey, value); }
+
+    // Emulated-catalog metadata providers are free. Nintendo needs no key; IGDB uses a free Twitch app.
+    private string _emulatedCatalogProvider = "dlps_downloader";
+    private string _igdbClientId = "";
+    private string _igdbClientSecret = "";
+    public string EmulatedCatalogProvider { get => _emulatedCatalogProvider; set => SetProperty(ref _emulatedCatalogProvider, value); }
+    public string IgdbClientId { get => _igdbClientId; set => SetProperty(ref _igdbClientId, value); }
+    public string IgdbClientSecret { get => _igdbClientSecret; set => SetProperty(ref _igdbClientSecret, value); }
     public string[] GifFavoriteIds { get => _gifFavoriteIds; set => SetProperty(ref _gifFavoriteIds, value ?? []); }
 
     /// <summary>Discord sticker CDN links the user saved for reuse, newest first.</summary>
@@ -769,6 +778,9 @@ public sealed class AppSettings : ObservableObject
     public bool ReduceEffects { get => _reduceEffects; set => SetProperty(ref _reduceEffects, value); }
     public bool AutoplayTrailers { get => _autoplayTrailers; set => SetProperty(ref _autoplayTrailers, value); }
     public bool AmbientEnabled { get => _ambientEnabled; set => SetProperty(ref _ambientEnabled, value); }
+
+    /// <summary>Hides the navigation drawer and its toggle. The version then moves to the Settings footer.</summary>
+    public bool ShowSidebar { get => _showSidebar; set => SetProperty(ref _showSidebar, value); }
     public string BackgroundColor { get => _backgroundColor; set => SetProperty(ref _backgroundColor, value); }
     public bool TrackPlayTime { get => _trackPlayTime; set => SetProperty(ref _trackPlayTime, value); }
     public string TransparencyAcknowledgement { get; set; } = "";

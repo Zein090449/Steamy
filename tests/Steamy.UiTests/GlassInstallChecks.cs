@@ -225,7 +225,7 @@ public sealed partial class PageSmokeTests
             navigation.Navigate<SettingsPage>(); PumpUntil(() => Descendants<SettingsPage>(window).Any());
             var settings = Descendants<SettingsPage>(window).Single();
             var categories = (ListBox)settings.FindName("CategorySelector");
-            Assert.Equal(6, categories.Items.Count);
+            Assert.Equal(7, categories.Items.Count);
             Assert.Equal(TextRenderingMode.ClearType, TextOptions.GetTextRenderingMode(settings));
             foreach (ListBoxItem category in categories.Items)
             {

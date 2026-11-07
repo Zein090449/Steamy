@@ -217,6 +217,9 @@
               <ui:NavigationViewItem Content="Goldberg"
                                      Icon="{ui:SymbolIcon Games24}"
                                      TargetPageType="{x:Type pages:GoldbergPage}" />
+              <ui:NavigationViewItem Content="Emulators"
+                                     Icon="{ui:SymbolIcon XboxController24}"
+                                     TargetPageType="{x:Type pages:EmulatorsPage}" />
             </ui:NavigationViewItem.MenuItems>
           </ui:NavigationViewItem>
 
@@ -250,16 +253,15 @@
         <Grid>
         <Border x:Name="NavigationSheen" CornerRadius="14" Background="{DynamicResource ShellChromeSheenBrush}" IsHitTestVisible="False" />
         <Grid x:Name="ShellPillItems" Height="28" VerticalAlignment="Center" UseLayoutRounding="True" SnapsToDevicePixels="True" controls:PillMotion.IsEnabled="True" controls:PillMotion.FollowPointer="False">
-          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="{x:Static services:DiscordIntegration.TextColumnWidth}" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="{x:Static services:DiscordIntegration.IconColumnWidth}" /><ColumnDefinition Width="36" /><ColumnDefinition Width="36" /></Grid.ColumnDefinitions>
-          <Border x:Name="NavigationHighlight" Grid.ColumnSpan="8" CornerRadius="14" HorizontalAlignment="Left" IsHitTestVisible="False" Background="#30FFFFFF" />
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="{x:Static services:DiscordIntegration.TextColumnWidth}" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="36" /><ColumnDefinition Width="36" /></Grid.ColumnDefinitions>
+          <Border x:Name="NavigationHighlight" Grid.ColumnSpan="7" CornerRadius="14" HorizontalAlignment="Left" IsHitTestVisible="False" Background="#30FFFFFF" />
           <Button Content="Home" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:DashboardPage}" Click="ShellRoute_Click" />
           <Button Grid.Column="1" Content="Games" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:LibraryPage}" Click="ShellRoute_Click" />
           <Button x:Name="ShellFriendsHubButton" Visibility="{x:Static services:DiscordIntegration.Visibility}" Grid.Column="2" Content="Friends" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:FriendsPage}" Click="ShellRoute_Click" />
           <Button x:Name="ShellToolsButton" Grid.Column="3" Content="Tools" Style="{StaticResource ShellPillButton}" Click="ShellTools_Click" />
           <Button x:Name="ShellFixesButton" Grid.Column="4" Content="Fixes" Style="{StaticResource ShellPillButton}" Click="ShellFixes_Click" />
-          <Button x:Name="ShellFriendsButton" Visibility="{x:Static services:DiscordIntegration.Visibility}" Grid.Column="5" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:FriendsPage}" Click="ShellRoute_Click" ToolTip="{Binding NavigationSocialTooltip}" AutomationProperties.Name="Friends"><ui:SymbolIcon Symbol="People24" FontSize="18" /></Button>
-          <Button x:Name="ShellSettingsButton" Grid.Column="6" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:SettingsPage}" Click="ShellRoute_Click" AutomationProperties.Name="Settings"><ui:SymbolIcon Symbol="Settings24" FontSize="17" /></Button>
-          <Button x:Name="ShellDownloadsButton" Grid.Column="7" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:DownloadsPage}" Click="ShellRoute_Click" ToolTip="{Binding Summary}" AutomationProperties.Name="Downloads" shell:WindowChrome.IsHitTestVisibleInChrome="True"><Grid><ui:SymbolIcon Symbol="ArrowDownload24" FontSize="18"/><Ellipse x:Name="DownloadActiveDot" Width="5" Height="5" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="{Binding Job.IsActive, Converter={StaticResource ShellBoolVis}}"/></Grid></Button>
+          <Button x:Name="ShellSettingsButton" Grid.Column="5" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:SettingsPage}" Click="ShellRoute_Click" AutomationProperties.Name="Settings"><ui:SymbolIcon Symbol="Settings24" FontSize="17" /></Button>
+          <Button x:Name="ShellDownloadsButton" Grid.Column="6" Style="{StaticResource ShellPillButton}" Tag="{x:Type pages:DownloadsPage}" Click="ShellRoute_Click" ToolTip="{Binding Summary}" AutomationProperties.Name="Downloads" shell:WindowChrome.IsHitTestVisibleInChrome="True"><Grid><ui:SymbolIcon Symbol="ArrowDownload24" FontSize="18"/><Ellipse x:Name="DownloadActiveDot" Width="5" Height="5" Fill="{DynamicResource AccentBrush}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="{Binding Job.IsActive, Converter={StaticResource ShellBoolVis}}"/></Grid></Button>
         </Grid>
         </Grid>
       </Border>
@@ -287,8 +289,9 @@
               <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:CreamApiPage}" Click="ShellRoute_Click" Content="DLC configuration" Margin="5,5,0,5" />
               <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:FamilySharePage}" Click="ShellRoute_Click" Content="GreenLuma" Margin="0,5,5,5" />
               <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:GoldbergPage}" Click="ShellRoute_Click" Content="Goldberg" Margin="5,5,0,5" />
-              <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:UcOnlinePage}" Click="ShellRoute_Click" Content="UC Online" Margin="0,5,5,0" />
-              <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:ControllersPage}" Click="ShellRoute_Click" Content="Controllers" Margin="5,5,0,0" />
+              <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:EmulatorsPage}" Click="ShellRoute_Click" Content="Emulators" Margin="0,5,5,0" />
+              <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:UcOnlinePage}" Click="ShellRoute_Click" Content="UC Online" Margin="5,5,0,0" />
+              <Button Style="{StaticResource ToolMenuButton}" Tag="{x:Type pages:ControllersPage}" Click="ShellRoute_Click" Content="Controllers" Margin="0,5,5,0" />
             </UniformGrid>
           </StackPanel>
         </StackPanel>

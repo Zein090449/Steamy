@@ -33,6 +33,9 @@
     <Compile Include="..\..\src\Steamy\Services\Download\RyuuSecureDownloadService.cs" Link="Linked\RyuuSecureDownloadService.cs" />
     <Reference Include="Steamy.RelayClient"><HintPath>..\..\lib\Steamy.RelayClient.dll</HintPath><Private>true</Private></Reference>
     <Compile Include="..\..\src\Steamy\Services\Tools\GreenLumaDownloadDiscovery.cs" Link="Linked\GreenLumaDownloadDiscovery.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Tools\EmulatorCatalog.cs" Link="Linked\EmulatorCatalog.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Tools\EmulatorReleaseParser.cs" Link="Linked\EmulatorReleaseParser.cs" />
+    <Compile Include="..\..\src\Steamy\Services\Emulation\EmulatedCatalogProviders.cs" Link="Linked\EmulatedCatalogProviders.cs" />
     <Compile Include="..\..\src\Steamy\Services\Download\BundledModCapabilities.cs" Link="Linked\BundledModCapabilities.cs" />
     <Compile Include="..\..\src\Steamy.Core\Steam\VdfParser.cs" Link="Linked\VdfParser.cs" />
     <Compile Include="..\..\src\Steamy\Services\Sharing\ShareModels.cs" Link="Linked\ShareModels.cs" />

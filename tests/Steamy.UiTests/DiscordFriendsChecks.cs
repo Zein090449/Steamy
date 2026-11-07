@@ -102,9 +102,9 @@ public sealed partial class PageSmokeTests
         {
             window.Show(); PumpDispatcher(TimeSpan.FromMilliseconds(150));
             var navigation = (Grid)window.FindName("ShellPillItems");
-            Assert.Equal(8, navigation.ColumnDefinitions.Count);
+            Assert.Equal(7, navigation.ColumnDefinitions.Count);
             Assert.Empty(navigation.RowDefinitions);
-            var friends = (Button)window.FindName("ShellFriendsButton");
+            var friends = (Button)window.FindName("ShellFriendsHubButton");
             Assert.Equal(typeof(FriendsPage), friends.Tag);
             friends.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             PumpUntil(() => Descendants<FriendsPage>(window).Any());

@@ -1,0 +1,23 @@
+{
+  "name": "dlps",
+  "version": "1.0.0",
+  "description": "PS5 Downloader CLI Tool",
+  "main": "src/index.js",
+  "bin": {
+    "dlps": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "chalk": "^4.1.2",
+    "cheerio": "^1.0.0-rc.12",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "fast-xml-parser": "^5.9.3",
+    "open": "^8.4.2",
+    "ora": "^5.4.1",
+    "playwright-core": "^1.61.0"
+  }
+}

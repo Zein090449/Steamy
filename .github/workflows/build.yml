@@ -29,6 +29,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Test and build the checked-in Steamy DepotDownloaderMod fork
         run: python tools/DepotDownloaderMod/build.py
 

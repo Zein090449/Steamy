@@ -17,7 +17,9 @@ public sealed partial class LibraryViewModel
     private Dictionary<int, SteamCatalogItem> _ownedItemLookup = new();
     private IReadOnlyDictionary<int, GameRecommendation> _recommendations = new Dictionary<int, GameRecommendation>();
     private string _recommendationStatus = "Recommendations use the genres and title series of your installed games. All matching happens locally.";
-    public ObservableCollection<string> GenreFilters { get; } = new() { "All genres" };
+    // No "All genres" chip: the platform switch sits there now, and clicking the
+    // selected genre again clears it (see LibraryPage's genre pointer handler).
+    public ObservableCollection<string> GenreFilters { get; } = new();
     public int GetGenreCount(string genre)
     {
         if (string.IsNullOrWhiteSpace(genre) || genre == "All genres")
@@ -47,10 +49,12 @@ public sealed partial class LibraryViewModel
         };
     }
     public string SelectedGenre { get => _genre; set { if (SetProperty(ref _genre, value ?? "All genres")) { _page = 1; RefreshPage(); } } }
-    public string DiscoveryDescription => SelectedMode == "Your games"
+    public string DiscoveryDescription => IsEmulated
+        ? "Browse dlpsgame.com and download games with dlps_downloader (GUI) — no terminal needed."
+        : SelectedMode == "Your games"
         ? "Your installed Steam, DepotDownloader and locally detected games, together in one library."
         : SelectedMode == "For you" ? _recommendationStatus : "Discover base games. Search by title or App ID; DLCs and add-ons stay hidden.";
-    public string LibraryTitle => SelectedMode == "Your games" ? "Installed games" : SelectedMode == "For you" ? "For you" : "Games";
+    public string LibraryTitle => IsEmulated ? "Emulated games" : SelectedMode == "Your games" ? "Installed games" : SelectedMode == "For you" ? "For you" : "Games";
     private SteamCatalogItem[] InstalledItems()
     {
         var installed = Games.Where(game => game.InstallState == GameInstallState.Installed && !GameClassification.IsRuntime(game.AppId, game.Name)).ToArray();

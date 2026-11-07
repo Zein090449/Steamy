@@ -142,6 +142,16 @@
               <Grid Margin="0,20,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Margin="0,0,20,0">
+                  <TextBlock Text="Navigation sidebar" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="Show the sidebar for every page and tool. Turn it off for the top navigation only; the version then appears in Settings." TextWrapping="Wrap"
+                             FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                </StackPanel>
+                <ui:ToggleSwitch x:Name="SidebarToggle" Grid.Column="1" VerticalAlignment="Center"
+                                 AutomationProperties.Name="Navigation sidebar" />
+              </Grid>
+              <Grid Margin="0,20,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0">
                   <TextBlock Text="Trailer previews" FontSize="14" FontWeight="SemiBold" />
                   <TextBlock Text="Play muted trailers when hovering over upcoming games." TextWrapping="Wrap"
                              FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />

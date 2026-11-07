@@ -62,13 +62,13 @@
         <Border x:Name="HeroTopShade" IsHitTestVisible="False" Height="84" VerticalAlignment="Top"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#60000000"/><GradientStop Color="#00000000" Offset="1"/></LinearGradientBrush></Border.Background></Border>
       </Grid>
       <Grid x:Name="GameIdentityLayout" MaxWidth="880" HorizontalAlignment="Center" Margin="0,0,0,32"><Grid.ColumnDefinitions><ColumnDefinition Width="164"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-          <Border x:Name="GameIdentityArtwork" Width="132" Height="132" CornerRadius="22" controls:RoundedClip.Radius="22" Background="{Binding Game.CoverColor}" BorderBrush="#28FFFFFF" BorderThickness="1" Margin="0,0,22,0" VerticalAlignment="Center"><Image Source="{Binding Game.ArtworkImage}" Stretch="UniformToFill"/></Border>
+          <Border x:Name="GameIdentityArtwork" Width="132" Height="132" CornerRadius="22" controls:RoundedClip.Radius="22" Background="{Binding Game.CoverColor, FallbackValue=#242833}" BorderBrush="#28FFFFFF" BorderThickness="1" Margin="0,0,22,0" VerticalAlignment="Center"><Grid><Image Source="{Binding Game.ArtworkImage}" Stretch="UniformToFill"/><TextBlock Text="{Binding Monogram}" FontSize="46" FontWeight="SemiBold" Foreground="#70FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding IsEmulatedGame, Converter={StaticResource VisibleWhen}}"/></Grid></Border>
           <StackPanel x:Name="HeroIdentity" Grid.Column="1" VerticalAlignment="Center">
             <Image x:Name="GameLogo" Source="{Binding LogoArtwork}" Stretch="Uniform" Width="170" MaxHeight="40" HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="Collapsed"/>
             <TextBlock x:Name="GameTitle" Text="{Binding Name}" FontFamily="{DynamicResource SteamyDisplayFontFamily}" FontSize="36" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,8"/>
             <TextBlock Text="{Binding Genres}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="17" TextWrapping="NoWrap" LineHeight="24" MaxHeight="26" TextTrimming="CharacterEllipsis"/>
             <WrapPanel Margin="0,13,0,0"><StackPanel Orientation="Horizontal" Margin="0,0,18,6" Visibility="{Binding HasReviews, Converter={StaticResource VisibleWhen}}"><ui:SymbolIcon Symbol="ThumbLike24" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,6,0"/><TextBlock Text="{Binding ReviewPercentLabel}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/><TextBlock Text=" positive" Foreground="{DynamicResource TextSecondaryBrush}"/></StackPanel><TextBlock Text="{Binding ReleaseDate}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12"/></WrapPanel>
-            <WrapPanel x:Name="GameIdentityActions" Margin="0,12,0,0"><Button x:Name="PlayButton" Background="{DynamicResource DetailPrimaryActionBackground}" Style="{StaticResource DetailMainAction}" Command="{Binding PlayCommand}" Foreground="{DynamicResource DetailPrimaryActionForeground}" Height="42" MinWidth="112" Padding="18,9" Margin="0,0,12,0" AutomationProperties.Name="Start game" Visibility="{Binding IsInstalled, Converter={StaticResource VisibleWhen}}">
+            <WrapPanel x:Name="GameIdentityActions" Margin="0,12,0,0"><Button x:Name="PlayButton" Background="{DynamicResource DetailPrimaryActionBackground}" Style="{StaticResource DetailMainAction}" Command="{Binding PlayCommand}" Foreground="{DynamicResource DetailPrimaryActionForeground}" Height="42" MinWidth="112" Padding="18,9" Margin="0,0,12,0" AutomationProperties.Name="Start game" Visibility="{Binding ShowPlayButton, Converter={StaticResource VisibleWhen}}">
 
               <StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="Play24" FontSize="18" Margin="0,0,8,0" /><TextBlock Text="{Binding PlayLabel}" FontSize="15" FontWeight="SemiBold" /></StackPanel>
             </Button><Button x:Name="AddToSteamButton" Style="{StaticResource DetailMainAction}" Command="{Binding AddToSteamCommand}" Width="42" MinWidth="42" Height="42" Padding="0" Margin="-4,0,12,0" Background="#0FFFFFFF" BorderBrush="{DynamicResource DetailEdgeBrush}" BorderThickness="1" ToolTip="Add to Steam" AutomationProperties.Name="Add game to Steam" Visibility="{Binding CanAddToSteam, Converter={StaticResource VisibleWhen}}"><ui:SymbolIcon Symbol="Add24" FontSize="18"/></Button><Button x:Name="InstallButton" Click="Install_Click" Foreground="{DynamicResource DetailPrimaryActionForeground}" Height="42" MinWidth="172" Margin="0,0,14,0" Visibility="{Binding CanInstall, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="{Binding InstallLabel}">
@@ -77,15 +77,15 @@
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2"><ui:SymbolIcon Symbol="ArrowDownload24" FontSize="17" Margin="0,0,8,0"/><TextBlock Text="{Binding InstallLabel}" FontSize="15" FontWeight="SemiBold"/></StackPanel>
                 <controls:SmoothProgressBar SmoothValue="{Binding Download.Progress}" IsIndeterminate="{Binding Download.IsProgressIndeterminate}" Maximum="100" Height="3" Margin="-8,0,-8,-8" VerticalAlignment="Bottom" Foreground="#66C0F4" Background="#35FFFFFF" Style="{StaticResource JobProgressBar}" Visibility="{Binding HasDownload, Converter={StaticResource VisibleWhen}}"/>
               </Grid>
-            </Button><Button x:Name="SteamStoreButton" Content="View in Steam ↗" Style="{StaticResource DetailMainAction}" Command="{Binding OpenSteamCommand}" Background="#0FFFFFFF" BorderBrush="{DynamicResource DetailEdgeBrush}" BorderThickness="1" Padding="16,9" Height="42" AutomationProperties.Name="View in Steam" Visibility="{Binding IsSteamGame, Converter={StaticResource VisibleWhen}}"/><StackPanel x:Name="HeroPlayTime" VerticalAlignment="Center" Margin="14,0,22,0"><TextBlock Text="Time played" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,5"/><TextBlock x:Name="HeroPlayTimeText" Text="{Binding PlayTimeLabel}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/></StackPanel><StackPanel x:Name="HeroLastPlayed" VerticalAlignment="Center"><TextBlock Text="{Binding LastPlayedCaption}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,5"/><TextBlock x:Name="HeroLastPlayedText" Text="{Binding LastPlayedLabel}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/></StackPanel></WrapPanel>
+            </Button><Button x:Name="SteamStoreButton" Content="View in Steam ↗" Style="{StaticResource DetailMainAction}" Command="{Binding OpenSteamCommand}" Background="#0FFFFFFF" BorderBrush="{DynamicResource DetailEdgeBrush}" BorderThickness="1" Padding="16,9" Height="42" AutomationProperties.Name="View in Steam" Visibility="{Binding IsSteamGame, Converter={StaticResource VisibleWhen}}"/><StackPanel x:Name="HeroPlayTime" VerticalAlignment="Center" Margin="14,0,22,0" Visibility="{Binding ShowPlayStatistics, Converter={StaticResource VisibleWhen}}"><TextBlock Text="Time played" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,5"/><TextBlock x:Name="HeroPlayTimeText" Text="{Binding PlayTimeLabel}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"/></StackPanel><StackPanel x:Name="HeroLastPlayed" VerticalAlignment="Center" Visibility="{Binding ShowPlayStatistics, Converter={StaticResource VisibleWhen}}"><TextBlock Text="{Binding LastPlayedCaption}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,5"/><TextBlock x:Name="HeroLastPlayedText" Text="{Binding LastPlayedLabel}" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"/></StackPanel></WrapPanel>
           </StackPanel>
       </Grid>
       <Grid>
       <StackPanel x:Name="DetailsBody" Margin="0,0,0,40" MaxWidth="1280" HorizontalAlignment="Center">
 
-        <TextBlock Text="{Binding LaunchStatus}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,4,0"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding LaunchStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+        <TextBlock Text="{Binding LaunchStatus}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,4,12"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding LaunchStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
 
-        <StackPanel x:Name="OverviewPanel" Visibility="{Binding IsOverview, Converter={StaticResource VisibleWhen}}">
+        <StackPanel x:Name="OverviewPanel" Visibility="{Binding ShowSteamOverview, Converter={StaticResource VisibleWhen}}">
           <StackPanel Margin="4,0,4,26">
           <TextBlock Text="Game details" Style="{StaticResource DetailHeading}" FontSize="23"/>
           <Border x:Name="GameInformationCard" Style="{StaticResource DetailGlass}" Margin="0,16,0,0">
@@ -164,6 +164,29 @@
           <TextBlock Text="{Binding InstallationLabel}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10" />
           <TextBlock Text="{Binding LaunchTarget}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextTertiaryBrush}" />
         </StackPanel>
+        </StackPanel>
+        <StackPanel x:Name="EmulatedOverviewPanel" Visibility="{Binding ShowEmulatedOverview, Converter={StaticResource VisibleWhen}}">
+          <StackPanel Margin="4,0,4,26">
+            <TextBlock Text="Game details" Style="{StaticResource DetailHeading}" FontSize="23"/>
+            <Border Style="{StaticResource DetailGlass}" Margin="0,16,0,0">
+              <StackPanel>
+                <TextBlock Text="{Binding Description}" FontSize="14" LineHeight="24" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                <UniformGrid Columns="2" Margin="0,22,0,0">
+                  <StackPanel Margin="0,0,16,0"><TextBlock Text="EMULATOR" Style="{StaticResource DetailCaption}"/><TextBlock Text="{Binding EmulatorName}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/></StackPanel>
+                  <StackPanel><TextBlock Text="PLATFORM" Style="{StaticResource DetailCaption}"/><TextBlock Text="{Binding EmulatorPlatform}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap"/></StackPanel>
+                </UniformGrid>
+                <Border Height="1" Background="{DynamicResource DetailEdgeBrush}" Margin="0,20,0,20"/>
+                <TextBlock Text="GAME FILE" Style="{StaticResource DetailCaption}"/>
+                <TextBlock Text="{Binding EmulatedGamePath}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource DetailGlass}" Margin="0,16,0,0">
+              <StackPanel>
+                <TextBlock Text="What you need" Style="{StaticResource DetailHeading}" FontSize="17"/>
+                <TextBlock Text="{Binding SystemRequirements}" FontSize="13" LineHeight="23" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
         </StackPanel>
         <Border x:Name="AchievementsPanel" Style="{StaticResource DetailGlass}" Visibility="{Binding IsAchievements, Converter={StaticResource VisibleWhen}}">
           <StackPanel>

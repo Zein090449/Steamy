@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env'), override: true });
+const { program } = require('commander');
+const listCommand = require('./commands/list');
+const downloadCommand = require('./commands/download');
+const openCommand = require('./commands/open');
+const excludeCommand = require('./commands/exclude');
+const completedCommand = require('./commands/completed');
+
+// Never die with a raw "Unhandled 'error' event" stack in the middle of a download:
+// report it as a normal error line so the caller can show it and move on.
+process.on('uncaughtException', (error) => {
+  try { console.error('[Fatal] ' + (error && error.stack ? error.stack : String(error))); } catch (_) { /* ignore */ }
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  try { console.error('[Fatal] Unhandled rejection: ' + (reason && reason.stack ? reason.stack : String(reason))); } catch (_) { /* ignore */ }
+});
+// A closed stdout/stderr pipe (the GUI going away) must not crash the process.
+try { process.stdout.on('error', () => {}); process.stderr.on('error', () => {}); } catch (_) { /* ignore */ }
+
+program
+  .name('dlps')
+  .description('PS5 Downloader CLI Tool')
+  .version('1.0.0');
+
+program
+  .command('list')
+  .argument('[source]', 'Game source: all, local, dl/downloaded, web, tbd, excluded, pending, ps1, ps2, ps12, saturn, psp, other (defaults to all)', 'all')
+  .argument('[query]', 'Search query for game title or game ID. If the first argument is not a known source, it is treated as the query (e.g. `list "metal gear"`)')
+  .option('-l, --limit <number>', 'Limit the number of displayed results')
+  .option('-r, --refresh', 'Force refresh the web game list cache')
+  .description('List and search games from local database and web lists')
+  .action((source, query, options) => {
+    listCommand(source, query, options);
+  });
+
+program
+  .command('download')
+  .argument('[title|url]', 'Game title to download, or a direct file URL (1fichier.com, datanodes.to, mediafire.com, vikingfile.com)')
+  .option('-l, --limit <number>', 'Batch download first N games from TBD list')
+  .option('-t, --type <string>', 'Download only specific file types (e.g. GAME, DLC, BACKPORT, UPDATE)')
+  .option('-s, --section', 'Interactively select a section from the available list')
+  .option('-c, --completed', 'Mark the game as completed/downloaded without downloading it')
+  .option('-p, --password <string>', 'Override archive password (used when auto-detection fails)')
+  .option('-o, --out <path>', 'Override the default download directory')
+  .option('-f, --fallback', 'Allow non-exFAT sections as a fallback when an exFAT section exists (default: exFAT-exclusive)')
+  .option('-i, --interactive', 'Open game page in browser and queue to pending for manual download')
+  .option('--force', 'Ignore JPN/platform labels and download regardless')
+  .description('Download a game by title, a batch from the TBD list, or a direct file URL')
+  .action((title, options) => {
+    downloadCommand(title, options);
+  });
+
+program
+  .command('open')
+  .argument('<title>', 'Title of the game page to open in default browser')
+  .option('-i, --interactive', 'Queue the game as pending for manual download')
+  .description('Open the game download page in browser')
+  .action((title, options) => {
+    openCommand(title, options);
+  });
+
+program
+  .command('exclude')
+  .argument('[title]', 'Title of the game to exclude from download')
+  .option('-r, --remove', 'Remove the game from the exclusion list')
+  .description('Manage excluded games list (add, remove, or list exclusions)')
+  .action((title, options) => {
+    excludeCommand(title, options);
+  });
+
+program
+  .command('completed')
+  .argument('[title]', 'Title of the game to mark as completed')
+  .option('-r, --remove', 'Remove the game from the completed list')
+  .option('--pending', 'Batch-mark games queued by `download -i` as completed (auto-detects downloaded GAME files)')
+  .option('-p, --password <string>', 'Archive password (if needed)')
+  .option('--ppsa <ppsa>', 'Specify PPSA ID to filter or update pending game(s)')
+  .description('Manage completed games list (add, remove, or list completed games)')
+  .action((title, options) => {
+    completedCommand(title, options);
+  });
+
+program
+  .command('dupe')
+  .argument('[query]', 'Search query for games in TBD/Web list to check for duplicates')
+  .description('Find and mark web games as duplicates of existing local/completed games')
+  .action((query) => {
+    const dupeCommand = require('./commands/dupe');
+    dupeCommand(query);
+  });
+
+program
+  .command('process')
+  .argument('[path]', 'Path to a downloaded file (.exfat/.rar/.zip/.7z/.ffpkg) or decompressed folder, or game title with --pending')
+  .option('--pending', 'Batch-process downloaded archives and mark pending games as completed')
+  .option('-p, --password <string>', 'Archive password (if needed)')
+  .option('--ppsa <ppsa>', 'Specify PPSA ID to filter or update pending game(s)')
+  .description('Post-process a manually downloaded file/folder, or batch-process pending manual downloads')
+  .action((targetPath, options) => {
+    const processCommand = require('./commands/process');
+    processCommand(targetPath, options);
+  });
+
+program
+  .command('scan')
+  .argument('[name]', 'Game name to scan (partial match). Omit to scan the TBD list.')
+  .option('-l, --limit <number>', 'Scan only the top N games from the TBD list')
+  .option('-d, --delay <ms>', 'Throttle: delay before each network fetch in ms (default 1500, jittered; 0 to disable)')
+  .option('-r, --refresh', 'Force re-scrape subpages instead of using cached data (re-scans already-scanned games)')
+  .option('--reset', 'Clear this platform\'s scan-progress marks before scanning')
+  .description('Visit PS4-list subpages and label non-PS4 (PS1/PS2/Saturn) packages, no download (PS4 only)')
+  .action((name, options) => {
+    const scanCommand = require('./commands/scan');
+    scanCommand(name, options);
+  });
+
+program
+  .command('set-platform')
+  .argument('[platform]', 'Console platform to set as default (ps5, ps4, ps3, ps2, switch, wii, wiiu, 3ds, xbox-jtag, xbox-iso, psp, psvita, pc)')
+  .description('Set or show the default game console platform')
+  .action((platform) => {
+    const setPlatformCommand = require('./commands/set-platform');
+    setPlatformCommand(platform);
+  });
+
+program
+  .command('type')
+  .argument('[title]', 'Title of the game to manually set the console type')
+  .argument('[consoleType]', 'Console type to set (ps1, ps2, ps1-2, saturn, psp, other)')
+  .option('-r, --remove', 'Remove the manually set console type')
+  .description('Manually set or remove a console type (label) for a game')
+  .action((title, consoleType, options) => {
+    const typeCommand = require('./commands/type');
+    typeCommand(title, consoleType, options);
+  });
+
+program.parse(process.argv);

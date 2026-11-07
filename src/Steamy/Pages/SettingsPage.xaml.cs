@@ -56,7 +56,16 @@ public partial class SettingsPage : Page
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName == nameof(SettingsViewModel.Settings)) ObserveMotionSettings();
+        if (args.PropertyName != nameof(SettingsViewModel.Settings)) return;
+        ObserveMotionSettings();
+        // Reset replaces the settings instance, so re-apply the shell preference from the new one.
+        if (Window.GetWindow(this) is MainWindow main) main.ApplySidebarPreference(ViewModel.Settings.ShowSidebar);
+    }
+
+    private void SidebarToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is Wpf.Ui.Controls.ToggleSwitch toggle && Window.GetWindow(this) is MainWindow main)
+            main.ApplySidebarPreference(toggle.IsChecked == true);
     }
 
     private void ScanInstalledGames_Click(object sender, RoutedEventArgs args)
@@ -152,7 +161,7 @@ public partial class SettingsPage : Page
         // Checked/TextChanged also fire while InitializeComponent is still building the page.
         if (SectionsPanel is null || SettingsSearch is null || SectionSummary is null) return;
         CategoryTitle.Text = !string.IsNullOrWhiteSpace(SettingsSearch.Text) ? "Search results"
-            : _selectedCategory switch { "downloads" => "Downloads", "services" => "Connections", "network" => "Network", "transparency" => "Data & privacy", "all" => "All settings", _ => "General" };
+            : _selectedCategory switch { "personalization" => "Personalization", "downloads" => "Downloads", "services" => "Connections", "network" => "Network", "transparency" => "Data & privacy", "all" => "All settings", _ => "General" };
         var words = SettingsSearch.Text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var count = 0;
         var changed = false;

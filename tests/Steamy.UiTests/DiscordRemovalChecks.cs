@@ -25,7 +25,6 @@ public sealed partial class PageSmokeTests
         try
         {
             window.Show(); PumpUntil(() => Descendants<DashboardPage>(window).Any(page => page.IsVisible));
-            Assert.False(((Button)window.FindName("ShellFriendsButton")).IsVisible);
             Assert.False(((Button)window.FindName("ShellFriendsHubButton")).IsVisible);
             Assert.Empty(Descendants<VoiceCallBar>(window));
             window.OpenSocialDock(); window.NavigateWithFeedback(typeof(FriendsPage));

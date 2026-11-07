@@ -81,11 +81,12 @@ public sealed partial class LibraryViewModel : ViewModelBase
     }
     private string _search=""; private string _sort="Popular (AAA)"; private string _typeFilter="Game"; private int _page=1; private int _pageSize=48; private LibraryNsfwScope _nsfwScope=LibraryNsfwScope.Hide;
     public const string RyuuSource="Available (Ryuu)";
-    public LibraryViewModel(IAppDataStore s, INavigationService n, ILoggingService l, ISteamCatalogService c, IRyuuCatalogService ryuu, IArtworkService artwork, ILibrarySyncService sync, IHubcapCatalogService hubcap, IFreeManifestCatalogService freeSources, IGameActivityService? activity = null, ISpotlightService? spotlight = null) : base(s,n,l)
+    public LibraryViewModel(IAppDataStore s, INavigationService n, ILoggingService l, ISteamCatalogService c, IRyuuCatalogService ryuu, IArtworkService artwork, ILibrarySyncService sync, IHubcapCatalogService hubcap, IFreeManifestCatalogService freeSources, IGameActivityService? activity = null, ISpotlightService? spotlight = null, EmulatedCatalogProviderRegistry? catalogProviders = null, IEmulatorInstallService? emulators = null, ISettingsService? settingsService = null) : base(s,n,l)
     {
         _catalog=c; _ryuu=ryuu; _hubcap=hubcap; _librarySync=sync; _freeSources=freeSources;
         _activity = activity;
         _spotlight = spotlight;
+        InitializeEmulation(catalogProviders?.Providers, emulators, settingsService);
         UpdateReleaseFilter(spotlight?.Cached ?? SpotlightSnapshot.Empty);
         if (_activity is not null) _activity.Changed += OnFavoriteActivityChanged;
         _searchDebounceTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
@@ -122,10 +123,16 @@ public sealed partial class LibraryViewModel : ViewModelBase
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception) { Logging.Add(LogLevel.Debug, "Library", $"Favorites unavailable: {exception.GetType().Name}."); }
     }
-    private void OnSearchDebounceElapsed(object? sender, EventArgs e) { _searchDebounceTimer.Stop(); RefreshPage(); }
+    private void OnSearchDebounceElapsed(object? sender, EventArgs e)
+    {
+        _searchDebounceTimer.Stop();
+        if (IsEmulated) { _ = LoadEmulatedCatalogAsync(reset: true); return; }
+        RefreshPage();
+    }
     public override Task OnNavigatedFromAsync()
     {
         _pageLifetime.Cancel();
+        CancelEmulatedWork();
         _navigating = false;
         IsCatalogLoading = false;
         OnPropertyChanged(nameof(IsCatalogLoading));
@@ -167,8 +174,9 @@ public sealed partial class LibraryViewModel : ViewModelBase
     public ICommand SubmitSearchCommand { get; }
     public ICommand SelectSearchSuggestionCommand { get; }
     public bool IsCatalogLoading { get; private set; } public bool CatalogLoaded { get; private set; } public string CatalogStatus { get; private set; }="Load your Steam app list to begin."; public string LibraryMessage { get; private set; }="";
-    public string CatalogCountLabel => SelectedMode == "Your games" ? $"{Games.Count(game => game.InstallState == GameInstallState.Installed && !GameClassification.IsRuntime(game.AppId, game.Name)):N0} installed" : $"{FilteredCatalogCount:N0} base games"; public string VisibleCountLabel=>$"Showing {PagedCatalogItems.Count} of {FilteredCatalogCount:N0}"; public string PageLabel=>$"Page {_page} of {TotalPages}"; public string UpdatedLabel { get; private set; }="Not loaded"; public int FilteredCatalogCount { get; private set; } public int TotalPages=>Math.Max(1,(FilteredCatalogCount+PageSize-1)/PageSize); public bool CanGoPrevious=>_page>1; public bool CanGoNext=>_page<TotalPages; public bool HasCatalogItems=>PagedCatalogItems.Count>0; public bool HasGames=>FilteredGames.Count>0;    public bool HasActiveFilters=>SelectedSourceFilter!="All sources"||!string.IsNullOrWhiteSpace(SearchText)||SelectedSort!="Popular (AAA)"||PageSize!=48||NsfwScope==LibraryNsfwScope.Show; public string FilterSummary=>HasActiveFilters?"Active filters":"No filters applied"; public string EmptyStateMessage => SelectedMode == "Your games" ? "No installed games match. Run setup or Scan PC from Home to find Steam, DepotDownloader and standalone installations." : "No base games found. Try another title or App ID.";
-    public ICommand LoadCatalogCommand=>new AsyncRelayCommand(()=>LoadAsync(false)); public ICommand RefreshCatalogCommand=>new AsyncRelayCommand(async()=>{ try{await _librarySync.RefreshAsync(); RefreshLocalPage();}catch{} await LoadAsync(true); await PrepareRecommendationsAsync(); }); public ICommand ScanLibraryCommand=>new AsyncRelayCommand(async()=>{ try{await _librarySync.RefreshAsync();}catch{} RefreshLocalPage(); }); public ICommand FirstPageCommand=>new RelayCommand(()=>SetPage(1)); public ICommand PreviousPageCommand=>new RelayCommand(()=>SetPage(_page-1)); public ICommand NextPageCommand=>new RelayCommand(()=>SetPage(_page+1)); public ICommand LastPageCommand=>new RelayCommand(()=>SetPage(TotalPages)); public ICommand RefreshCommand=>new RelayCommand(RefreshPage); public ICommand OpenDownloadsCommand=>new RelayCommand(()=>Navigation.Navigate<DownloadsPage>()); public ICommand OpenFolderCommand=>new RelayCommand<Game>(_=>{}); public ICommand RefreshLocalCommand=>new RelayCommand(()=>{}); public ICommand OpenStoreCommand=>new RelayCommand(()=>{}); public IAsyncRelayCommand LoadScreenshotsCommand=>new AsyncRelayCommand(()=>Task.CompletedTask);
+    public string CatalogCountLabel => IsEmulated ? (_emulatedCount > 0 ? $"{_emulatedCount:N0} games" : (EmulatedCatalog?.Count > 0 ? $"{EmulatedCatalog.Count:N0} games" : "dlps catalog")) : SelectedMode == "Your games" ? $"{Games.Count(game => game.InstallState == GameInstallState.Installed && !GameClassification.IsRuntime(game.AppId, game.Name)):N0} installed" : $"{FilteredCatalogCount:N0} base games";
+    public string VisibleCountLabel=>$"Showing {PagedCatalogItems.Count} of {FilteredCatalogCount:N0}"; public string PageLabel=>$"Page {_page} of {TotalPages}"; public string UpdatedLabel { get; private set; }="Not loaded"; public int FilteredCatalogCount { get; private set; } public int TotalPages=>Math.Max(1,(FilteredCatalogCount+PageSize-1)/PageSize); public bool CanGoPrevious=>_page>1; public bool CanGoNext=>_page<TotalPages; public bool HasCatalogItems=>PagedCatalogItems.Count>0; public bool HasGames=>FilteredGames.Count>0;    public bool HasActiveFilters=>SelectedSourceFilter!="All sources"||!string.IsNullOrWhiteSpace(SearchText)||SelectedSort!="Popular (AAA)"||PageSize!=48||NsfwScope==LibraryNsfwScope.Show; public string FilterSummary=>HasActiveFilters?"Active filters":"No filters applied"; public string EmptyStateMessage => IsEmulated ? "Search or browse to find games, then download them with dlps_downloader." : SelectedMode == "Your games" ? "No installed games match. Run setup or Scan PC from Home to find Steam, DepotDownloader and standalone installations." : "No base games found. Try another title or App ID.";
+    public ICommand LoadCatalogCommand=>new AsyncRelayCommand(()=>LoadAsync(false)); public ICommand RefreshCatalogCommand=>new AsyncRelayCommand(async()=>{ if(IsEmulated){ await PrepareEmulatedAsync(); return; } try{await _librarySync.RefreshAsync(); RefreshLocalPage();}catch{} await LoadAsync(true); await PrepareRecommendationsAsync(); }); public ICommand ScanLibraryCommand=>new AsyncRelayCommand(async()=>{ try{await _librarySync.RefreshAsync();}catch{} RefreshLocalPage(); }); public ICommand FirstPageCommand=>new RelayCommand(()=>SetPage(1)); public ICommand PreviousPageCommand=>new RelayCommand(()=>SetPage(_page-1)); public ICommand NextPageCommand=>new RelayCommand(()=>SetPage(_page+1)); public ICommand LastPageCommand=>new RelayCommand(()=>SetPage(TotalPages)); public ICommand RefreshCommand=>new RelayCommand(RefreshPage); public ICommand OpenDownloadsCommand=>new RelayCommand(()=>Navigation.Navigate<DownloadsPage>()); public ICommand OpenFolderCommand=>new RelayCommand<Game>(_=>{}); public ICommand RefreshLocalCommand=>new RelayCommand(()=>{}); public ICommand OpenStoreCommand=>new RelayCommand(()=>{}); public IAsyncRelayCommand LoadScreenshotsCommand=>new AsyncRelayCommand(()=>Task.CompletedTask);
     // Home dashboard shortcuts + quick stats shown on the Games landing page.
     public ICommand OpenGameFixesCommand=>new RelayCommand(()=>Navigation.Navigate<GameFixesPage>());    public ICommand OpenSteamlessCommand=>new RelayCommand(()=>Navigation.Navigate<SteamlessPage>()); public ICommand OpenCreamInstallerCommand=>new RelayCommand(()=>Navigation.Navigate<CreamInstallerPage>()); public ICommand OpenDenuvoCommand=>new RelayCommand(()=>Navigation.Navigate<DenuvoGenerationPage>()); public ICommand OpenSettingsCommand=>new RelayCommand(()=>Navigation.Navigate<SettingsPage>());
     public int InstalledCount=>Games.Count(g=>g.InstallState==GameInstallState.Installed); public int LocalCount=>Games.Count; public int ActiveDownloadCount=>Store.Downloads.Count(x=>x.IsActive); public int QueuedCount=>Store.Downloads.Count(x=>x.State==DownloadJobState.Queued); public string TotalCatalogCount=>$"{CatalogItems.Count:N0}"; public string LocalLibraryLabel=>Games.Count==1?"1 installed app":$"{Games.Count:N0} installed apps"; public string DownloadsSummary=>ActiveDownloadCount>0?$"{ActiveDownloadCount} active · {QueuedCount} queued":QueuedCount>0?$"{QueuedCount} queued":"Queue empty";
@@ -181,7 +189,11 @@ public sealed partial class LibraryViewModel : ViewModelBase
         _navigating = true;
         try
         {
+            // The emulated-games shelf is shared by both platforms, so it is refreshed
+            // even when the Steam catalog is the visible one.
+            RefreshEmulatedLocalGames();
             RefreshPage();
+            if (IsEmulated) { await PrepareEmulatedAsync(); return; }
             // The installed library is complete without materializing the entire public catalog.
             var catalogTask = SelectedMode == "Your games" ? Task.CompletedTask : LoadAsync(false);
             if (DateTimeOffset.UtcNow - _lastLibraryScan >= TimeSpan.FromSeconds(30))
@@ -370,6 +382,13 @@ public sealed partial class LibraryViewModel : ViewModelBase
     }
     private void RefreshPage()
     {
+        // The emulated section renders from its own catalog; Steam state stays as it was.
+        if (IsEmulated)
+        {
+            if (!string.Equals(DlpsSearch, SearchText, StringComparison.Ordinal)) DlpsSearch = SearchText;
+            _ = LoadEmulatedCatalogAsync(reset: true);
+            return;
+        }
         if (_pageLifetime.IsCancellationRequested)
         {
             _pageLifetime.Dispose();

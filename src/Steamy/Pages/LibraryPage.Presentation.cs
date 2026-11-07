@@ -36,10 +36,10 @@ public partial class LibraryPage
 
     private void LibraryFilterBar_SizeChanged(object sender, SizeChangedEventArgs args)
     {
-        // Search hints and loading feedback can add a line. Reserve their real
-        // height once it changes so covers never overlap the pinned filters.
+        // Search hints, the emulated-games shelf and loading feedback can add height.
+        // Reserve their real height once it changes so covers never overlap the pinned filters.
         var margin = new Thickness(0, args.NewSize.Height + 24, 0, 0);
-        LibraryGallery.Margin = LoadMoreButton.Margin = margin;
+        LibraryGallery.Margin = LoadMoreButton.Margin = EmulatedGallery.Margin = margin;
     }
 
     private void ResizeLibraryPresentation()

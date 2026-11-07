@@ -60,7 +60,7 @@ public sealed partial class PageSmokeTests
                         }
                         Assert.True(page.ActualWidth > 500, "Every routed page must receive a usable viewport.");
                         Assert.True(page.ActualWidth >= window.ActualWidth - 2, "The established shell keeps pages full width.");
-                        Assert.True(((Button)window.FindName("ShellFriendsButton")).IsVisible);
+                        Assert.True(((Button)window.FindName("ShellFriendsHubButton")).IsVisible);
                         var bell = (FrameworkElement)window.FindName("NotificationBell");
                         var caption = (FrameworkElement)window.FindName("WindowTitleBar");
                         Assert.True(bell.TranslatePoint(new Point(bell.ActualWidth, 0), window).X + 5 <= caption.TranslatePoint(new Point(), window).X, "Notifications must never overlap the Windows caption controls.");

@@ -12,6 +12,5 @@ public static class DiscordIntegration
     public static bool Enabled => TestOverride ?? Included;
     public static Visibility Visibility => Enabled ? Visibility.Visible : Visibility.Collapsed;
     public static GridLength TextColumnWidth => new(Enabled ? 1 : 0, Enabled ? GridUnitType.Star : GridUnitType.Pixel);
-    public static GridLength IconColumnWidth => new(Enabled ? 36 : 0);
     internal static bool IsSocialPage(Type page) => page == typeof(Pages.FriendsPage) || page == typeof(Pages.FriendsHubPage) || page == typeof(Pages.CommunityPage);
 }

@@ -37,7 +37,7 @@ public sealed partial class PageSmokeTests
             UiThemeService.Apply(theme);
             var page = new SettingsPage();
             var selector = (ListBox)page.FindName("CategorySelector");
-            foreach (var category in new[] { 0, 1, 2, 3, 4, 5 })
+            foreach (var category in new[] { 0, 1, 2, 3, 4, 5, 6 })
             {
                 selector.SelectedIndex = category;
                 page.Measure(new Size(1440, 800)); page.Arrange(new Rect(0, 0, 1440, 800)); page.UpdateLayout();
@@ -61,8 +61,9 @@ public sealed partial class PageSmokeTests
         var page = new SettingsPage();
         var model = services.GetRequiredService<SettingsViewModel>();
         var sections = ((StackPanel)page.FindName("SectionsPanel")).Children.OfType<DeferredSettingsSection>().ToArray();
-        Assert.Equal(13, sections.Length);
+        Assert.Equal(14, sections.Length);
         Assert.All(sections.Where(section => !Equals(section.Tag, "general")), section => Assert.False(section.IsRealized));
+        sections.Single(section => Equals(section.Tag, "personalization")).EnsureContent(page);
         Assert.IsType<BackgroundOptions>(page.FindName("BackgroundPreferences"));
         var search = (TextBox)page.FindName("SettingsSearch");
         var selector = (ListBox)page.FindName("CategorySelector");
@@ -79,7 +80,9 @@ public sealed partial class PageSmokeTests
             search.Text = "resume"; PumpDispatcher(TimeSpan.FromMilliseconds(250));
             Assert.Contains(sections, section => section.Visibility == Visibility.Visible && Equals(section.Tag, "downloads"));
             Assert.All(sections.Where(section => Equals(section.Tag, "services")), section => Assert.False(section.IsRealized));
-            search.Clear(); selector.SelectedIndex = 2; PumpDispatcher(TimeSpan.FromMilliseconds(250));
+            search.Clear();
+            selector.SelectedItem = selector.Items.Cast<ListBoxItem>().Single(item => Equals(item.Tag, "services"));
+            PumpDispatcher(TimeSpan.FromMilliseconds(250));
             foreach (var name in new[] { "SteamApiKeyBox", "RyuuAuthKeyBox", "HubcapApiKeyBox", "DepotBoxApiKeyBox", "ManifestHubApiKeyBox", "MirrorTokenBox" })
                 Assert.IsType<PasswordBox>(page.FindName(name));
             var input = (PasswordBox)page.FindName("SteamApiKeyBox");

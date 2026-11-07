@@ -7,6 +7,8 @@ public sealed class DiscordMediaTests
     [Theory]
     [InlineData("https://cdn.discordapp.com/attachments/1/photo.png?ex=123", true)]
     [InlineData("https://media.discordapp.net/attachments/1/photo.jpg", true)]
+    [InlineData("https://files.catbox.moe/abc123.png", true)]
+    [InlineData("https://files.catbox.moe.evil.example/abc123.png", false)]
     [InlineData("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1/header.jpg", true)]
     [InlineData("https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1/screenshot.jpg", true)]
     [InlineData("https://shared.fastly.steamstatic.com.evil.example/screenshot.jpg", false)]

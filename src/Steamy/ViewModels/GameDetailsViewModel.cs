@@ -25,6 +25,9 @@ public sealed class GameDetailsViewModel : ViewModelBase
     private readonly IPlayTimeService _playtime;
     private readonly IGameActivityService _activity;
     private readonly ISecureCredentialService _credentials;
+    private readonly IEmulatorInstallService? _emulators;
+    private EmulatorDefinition? _emulatorDefinition;
+    private EmulatorGame? _emulatorGame;
     private CancellationTokenSource? _load;
     private CancellationTokenSource? _saveDelay;
     private CancellationTokenSource? _timeLoad;
@@ -61,7 +64,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
     { if (args.PropertyName is nameof(DownloadJob.State) or nameof(DownloadJob.Priority) or nameof(DownloadJob.QueuePosition)) RefreshDownload(); }
     private void NotifyInstallation()
     {
-        foreach (var name in new[] { nameof(Name), nameof(IsInstalled), nameof(CanInstall), nameof(SourceCaption), nameof(SourceLabel), nameof(InstallationLabel), nameof(LaunchTarget), nameof(IsLocalGame) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Name), nameof(Monogram), nameof(IsInstalled), nameof(CanInstall), nameof(SourceCaption), nameof(SourceLabel), nameof(InstallationLabel), nameof(LaunchTarget), nameof(IsLocalGame), nameof(ShowPlayButton) }) OnPropertyChanged(name);
         ((AsyncRelayCommand)PlayCommand).NotifyCanExecuteChanged(); ((RelayCommand)OpenFolderCommand).NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanAddToSteam)); NotifySteamShortcutCommands();
     }
@@ -81,11 +84,12 @@ public sealed class GameDetailsViewModel : ViewModelBase
     private string _fullDescription = "", _releaseDate = "", _genres = "", _requirements = "", _languages = "", _features = "", _infoStatus = "";
     public GameDetailsViewModel(IAppDataStore store, INavigationService navigation, ILoggingService logging,
         IArtworkService artwork, IGameDetailsDataService data, IGamePreferencesStore preferences, IGameLaunchService launcher,
-        IPlayTimeService playtime, IGameActivityService activity, ISecureCredentialService credentials, ISteamCatalogService? catalog = null) : base(store, navigation, logging)
+        IPlayTimeService playtime, IGameActivityService activity, ISecureCredentialService credentials, ISteamCatalogService? catalog = null,
+        IEmulatorInstallService? emulators = null) : base(store, navigation, logging)
     {
         _artwork = artwork; _data = data; _preferences = preferences; _launcher = launcher; _catalog = catalog;
-        _playtime = playtime; _activity = activity; _credentials = credentials;
-        PlayCommand = new AsyncRelayCommand(LaunchAsync, () => IsInstalled && !IsPlaying);
+        _playtime = playtime; _activity = activity; _credentials = credentials; _emulators = emulators;
+        PlayCommand = new AsyncRelayCommand(LaunchAsync, () => ShowPlayButton && !IsPlaying);
         AddToSteamCommand = new RelayCommand(RequestAddToSteam, () => CanAddToSteam);
         SaveCommand = new AsyncRelayCommand(FlushAsync);
         RefreshAchievementsCommand = new AsyncRelayCommand(RefreshAchievementsAsync, () => Game is not null && !AchievementsBusy);
@@ -94,7 +98,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
             if (_returnToLibrary) Navigation.Navigate<LibraryPage>();
             else { _restoreDashboard?.Invoke(); Navigation.Navigate<DashboardPage>(); }
         });
-        OpenFolderCommand = new RelayCommand(() => OpenExternal(Game?.InstallFolder), () => !string.IsNullOrWhiteSpace(Game?.InstallFolder));
+        OpenFolderCommand = new RelayCommand(() => OpenExternal(FolderTarget), () => FolderTarget is not null);
         OpenSteamCommand = new RelayCommand(() => OpenExternal($"steam://nav/games/details/{Game?.AppId}"), () => Game?.AppId > 0);
         OpenCommunityCommand = new RelayCommand(() => OpenExternal($"https://steamcommunity.com/app/{Game?.AppId}"), () => Game?.AppId > 0);
         OpenSettingsCommand = new RelayCommand(() => Navigation.Navigate<SettingsPage>());
@@ -113,14 +117,26 @@ public sealed class GameDetailsViewModel : ViewModelBase
         });
     }
     public Game? Game { get => _game; private set => SetProperty(ref _game, value); }
-    public string Name => Game?.Name ?? "Your game";
+    public string Name => Game?.Name ?? _emulatorGame?.Name ?? "Your game";
+    public string Monogram => Name.Length == 0 || Name == "Your game" ? "?" : Name.Trim()[..1].ToUpperInvariant();
     public bool IsInstalled => Game?.InstallState == GameInstallState.Installed;
     public bool CanInstall => Game?.AppId > 0 && !IsInstalled;
+    public bool IsEmulatedGame => _emulatorDefinition is not null && _emulatorGame is not null;
+    public bool ShowPlayButton => IsInstalled || IsEmulatedGame;
+    public bool ShowPlayStatistics => !IsEmulatedGame;
+    public bool ShowSteamOverview => IsOverview && !IsEmulatedGame;
+    public bool ShowEmulatedOverview => IsOverview && IsEmulatedGame;
+    public string EmulatorName => _emulatorDefinition?.Name ?? "";
+    public string EmulatorPlatform => _emulatorDefinition?.Platform ?? "";
+    public string EmulatedGamePath => _emulatorGame?.Path ?? "";
     public SteamCatalogItem? CatalogGame { get; private set; }
-    public string SourceCaption => IsInstalled ? "INSTALLED FROM" : "INSTALL WITH";
-    public string SourceLabel => Game is null ? "" : !IsInstalled ? "DepotDownloader · Steam" : Game.InstallationSource.Length > 0 ? Game.InstallationSource : Game.IsLocalDownload ? "Local installation" : "Steam";
-    public string InstallationLabel => !IsInstalled ? "Choose a folder and download source with Install." : Game?.InstallFolder ?? "";
-    public string LaunchTarget => Game is null ? "" : Game.IsLocalDownload ? (LaunchExecutable.Length > 0 ? LaunchExecutable : Game.LaunchExecutable.Length > 0 ? Game.LaunchExecutable : "No executable detected") : "Launch with Steam";
+    public string SourceCaption => IsEmulatedGame ? "PLAY WITH" : IsInstalled ? "INSTALLED FROM" : "INSTALL WITH";
+    public string SourceLabel => IsEmulatedGame ? (_emulatorDefinition is { } definition ? $"{definition.Name} · {definition.Platform}" : "")
+        : Game is null ? "" : !IsInstalled ? "DepotDownloader · Steam" : Game.InstallationSource.Length > 0 ? Game.InstallationSource : Game.IsLocalDownload ? "Local installation" : "Steam";
+    public string InstallationLabel => IsEmulatedGame ? EmulatedGamePath : !IsInstalled ? "Choose a folder and download source with Install." : Game?.InstallFolder ?? "";
+    public string LaunchTarget => IsEmulatedGame ? $"Launch via {EmulatorName}" : Game is null ? "" : Game.IsLocalDownload ? (LaunchExecutable.Length > 0 ? LaunchExecutable : Game.LaunchExecutable.Length > 0 ? Game.LaunchExecutable : "No executable detected") : "Launch with Steam";
+    private string? FolderTarget => Game?.InstallFolder is { Length: > 0 } folder ? folder
+        : _emulatorGame?.Path is { Length: > 0 } path ? (File.Exists(path) ? Path.GetDirectoryName(path) : path) : null;
     public bool IsLocalGame => Game?.IsLocalDownload == true;
     public bool CanAddToSteam => IsInstalled;
     public event Action<SteamCatalogItem>? AddToSteamRequested;
@@ -182,7 +198,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
     public int AchievementCount => Achievements.Count;
     public double AchievementPercent => AchievementCount == 0 ? 0 : 100d * UnlockedCount / AchievementCount;
     public string AchievementSummary => AchievementsAvailable ? $"{UnlockedCount} / {AchievementCount} unlocked" : "Unavailable";
-    public int SelectedTab { get => _selectedTab; set { if (SetProperty(ref _selectedTab, Math.Clamp(value, 0, 3))) foreach (var name in new[] { nameof(IsOverview), nameof(IsAchievements), nameof(IsNotes), nameof(IsLaunchOptions) }) OnPropertyChanged(name); } }
+    public int SelectedTab { get => _selectedTab; set { if (SetProperty(ref _selectedTab, Math.Clamp(value, 0, 3))) foreach (var name in new[] { nameof(IsOverview), nameof(IsAchievements), nameof(IsNotes), nameof(IsLaunchOptions), nameof(ShowSteamOverview), nameof(ShowEmulatedOverview) }) OnPropertyChanged(name); } }
     public bool IsOverview => SelectedTab == 0;
     public bool IsAchievements => SelectedTab == 1;
     public bool IsNotes => SelectedTab == 2;
@@ -211,6 +227,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
         _load?.Cancel(); _load?.Dispose(); _load = null;
         _revision++; _preferencesLoaded = false; _dirty = false;
         OnPropertyChanged(nameof(CanEditPreferences));
+        _emulatorDefinition = null; _emulatorGame = null;
         Game = game; _returnToLibrary = returnToLibrary; _restoreDashboard = restoreDashboard;
         WatchDownloads();
         HeroArtwork = game.HeaderImage ?? game.ArtworkImage; LogoArtwork = null;
@@ -223,7 +240,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
         PlayTimeLabel = "0m"; LastPlayedLabel = "No launch recorded";
         IsPlaying = false; SelectedTab = 0; Achievements.Clear(); AchievementsAvailable = false; AchievementsBusy = false;
         AchievementStatus = "Loading achievements…";
-        foreach (var name in new[] { nameof(Name), nameof(SourceLabel), nameof(InstallationLabel), nameof(LaunchTarget), nameof(IsSteamGame), nameof(IsLocalGame), nameof(IsInstalled), nameof(CanInstall), nameof(SourceCaption) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Name), nameof(Monogram), nameof(SourceLabel), nameof(InstallationLabel), nameof(LaunchTarget), nameof(IsSteamGame), nameof(IsLocalGame), nameof(IsInstalled), nameof(CanInstall), nameof(SourceCaption), nameof(IsEmulatedGame), nameof(ShowPlayButton), nameof(ShowSteamOverview), nameof(ShowEmulatedOverview), nameof(ShowPlayStatistics), nameof(EmulatorName), nameof(EmulatorPlatform), nameof(EmulatedGamePath) }) OnPropertyChanged(name);
         RaiseAchievementStats();
         ((AsyncRelayCommand)PlayCommand).NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanAddToSteam)); NotifySteamShortcutCommands();
@@ -237,6 +254,40 @@ public sealed class GameDetailsViewModel : ViewModelBase
             ArtworkImage = item.ArtworkImage, HeaderImage = item.HeaderImage }, returnToLibrary: true);
         CatalogGame = item;
         Description = "Discover the game, then choose where and how to install it.";
+    }
+    public void SelectEmulatedGame(EmulatorDefinition definition, EmulatorGame game, bool returnToLibrary = false, Action? restoreDashboard = null)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(game);
+        CatalogGame = null;
+        _ = FlushAsync();
+        _load?.Cancel(); _load?.Dispose(); _load = null;
+        _revision++; _preferencesLoaded = false; _dirty = false;
+        OnPropertyChanged(nameof(CanEditPreferences));
+        // Game stays null so ActivateAsync and the playtime/achievement watchers skip Steam lookups.
+        _emulatorDefinition = definition; _emulatorGame = game;
+        Game = null; _returnToLibrary = returnToLibrary; _restoreDashboard = restoreDashboard;
+        WatchDownloads();
+        HeroArtwork = null; LogoArtwork = null;
+        Notes = ""; LaunchArguments = ""; LaunchExecutable = ""; SaveStatus = ""; LaunchStatus = ""; LastPlayedCaption = "Last played";
+        Description = $"Runs in {definition.Name} from the game file you added. Graphics, controllers, and saves are managed by the emulator.";
+        Developer = "Not available"; Publisher = "Not available";
+        FullDescription = ""; ReleaseDate = ""; Genres = $"{definition.Platform} · {definition.Name}";
+        SystemRequirements = definition.Requirements; Languages = ""; Features = ""; Reviews = null;
+        _developerStoreName = ""; OnPropertyChanged(nameof(DeveloperStoreUri));
+        DeveloperGames.Clear(); SimilarGames.Clear(); OnPropertyChanged(nameof(HasDeveloperGames)); OnPropertyChanged(nameof(HasSimilarGames));
+        Screenshots.Clear(); News.Clear(); OnPropertyChanged(nameof(HasScreenshots)); OnPropertyChanged(nameof(HasNews));
+        InfoStatus = "";
+        PlayTimeLabel = "0m"; LastPlayedLabel = "No launch recorded";
+        IsPlaying = false; SelectedTab = 0; Achievements.Clear(); AchievementsAvailable = false; AchievementsBusy = false;
+        AchievementStatus = "Achievements are handled by the emulator.";
+        foreach (var name in new[] { nameof(Name), nameof(Monogram), nameof(SourceLabel), nameof(InstallationLabel), nameof(LaunchTarget), nameof(IsSteamGame), nameof(IsLocalGame), nameof(IsInstalled), nameof(CanInstall), nameof(SourceCaption), nameof(IsEmulatedGame), nameof(ShowPlayButton), nameof(ShowSteamOverview), nameof(ShowEmulatedOverview), nameof(ShowPlayStatistics), nameof(EmulatorName), nameof(EmulatorPlatform), nameof(EmulatedGamePath) }) OnPropertyChanged(name);
+        RaiseAchievementStats();
+        ((AsyncRelayCommand)PlayCommand).NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanAddToSteam)); NotifySteamShortcutCommands();
+        ((RelayCommand)OpenFolderCommand).NotifyCanExecuteChanged();
+        ((RelayCommand)OpenSteamCommand).NotifyCanExecuteChanged();
+        ((RelayCommand)OpenCommunityCommand).NotifyCanExecuteChanged();
     }
     public async Task ActivateAsync()
     {
@@ -429,6 +480,7 @@ public sealed class GameDetailsViewModel : ViewModelBase
     private void RaiseAchievementStats() { foreach (var name in new[] { nameof(UnlockedCount), nameof(AchievementCount), nameof(AchievementPercent), nameof(AchievementSummary), nameof(AchievementPreview) }) OnPropertyChanged(name); }
     private async Task LaunchAsync()
     {
+        if (IsEmulatedGame) { LaunchEmulatedGame(); return; }
         if (Game is not { } game || !IsInstalled) return;
         var revision = _revision;
         await FlushAsync();
@@ -437,6 +489,20 @@ public sealed class GameDetailsViewModel : ViewModelBase
         if (revision != _revision) return;
         LaunchStatus = result.Message;
         if (result.Succeeded) await RefreshPlayTimeAsync();
+    }
+    private void LaunchEmulatedGame()
+    {
+        if (!IsEmulatedGame) return;
+        if (_emulators is null || _emulatorDefinition is not { } definition || _emulatorGame is not { } game)
+        { LaunchStatus = "The emulator for this game is not available."; return; }
+        var revision = _revision;
+        try
+        {
+            _emulators.LaunchGame(definition, game);
+            if (revision == _revision) LaunchStatus = $"Launched {game.Name} in {definition.Name}.";
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        { if (revision == _revision) LaunchStatus = error.Message; }
     }
     private void RequestAddToSteam()
     {

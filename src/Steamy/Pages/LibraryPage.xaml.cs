@@ -175,6 +175,27 @@ public partial class LibraryPage : Page
         }));
     }
 
+    private void SaveDlpsApiKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not LibraryViewModel model || sender is not Button button) return;
+        var box = FindPasswordBox(button) ?? DlpsApiKeyBox;
+        if (box is null) return;
+        model.DlpsApiKeyInput = box.Password;
+        if (model.SaveDlpsApiKeyCommand.CanExecute(null)) model.SaveDlpsApiKeyCommand.Execute(null);
+        if (!model.NeedsDlpsApiKey) box.Clear();
+    }
+
+    private PasswordBox? FindPasswordBox(DependencyObject parent)
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is PasswordBox box) return box;
+            if (FindPasswordBox(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
     private void GameCard_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button border) return;
@@ -233,6 +254,13 @@ public partial class LibraryPage : Page
         var installed = App.Services.GetRequiredService<IAppDataStore>().Games.FirstOrDefault(game => game.AppId == item.AppId && game.InstallState == GameInstallState.Installed);
         if (installed is not null) model.SelectGame(installed, returnToLibrary: true);
         else model.SelectCatalogGame(item);
+        App.Services.GetRequiredService<INavigationService>().Navigate<GameDetailsPage>();
+    }
+    private void EmulatedGameDetails_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: EmulatedGameTile tile }) return;
+        var model = App.Services.GetRequiredService<GameDetailsViewModel>();
+        model.SelectEmulatedGame(tile.Definition, tile.Game, returnToLibrary: true);
         App.Services.GetRequiredService<INavigationService>().Navigate<GameDetailsPage>();
     }
     public void OpenDownloadSetup(SteamCatalogItem item) => OpenGame(item, setup: true);
@@ -593,6 +621,16 @@ public partial class LibraryPage : Page
     {
         // Mouse opening and focus restoration preserve the user's gallery position.
         if (!Steamy.Controls.ScrollNavigation.IsNavigationKeyDown()) args.Handled = true;
+    }
+
+    private void Genres_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Without an "All" chip, clicking the active genre again is how the filter clears.
+        if (sender is not ListBox list || DataContext is not LibraryViewModel model) return;
+        if (ItemsControl.ContainerFromElement(list, (DependencyObject)e.OriginalSource) is not ListBoxItem item || !item.IsSelected) return;
+        model.SelectedGenre = "All genres";
+        list.SelectedItem = null;
+        e.Handled = true;
     }
 
     private void Page_PreviewKeyDown(object sender, KeyEventArgs e)

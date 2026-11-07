@@ -26,9 +26,10 @@ public sealed class ToolsSelectionTests
         Assert.Equal("150",dropdown.Attributes().Single(attribute=>attribute.Name.LocalName=="SurfaceMotion.Duration").Value);
         Assert.Equal("1",dropdown.Attributes().Single(attribute=>attribute.Name.LocalName=="SurfaceMotion.StartScale").Value);
         var tools=Named(document,"ToolsMenuSection").Descendants().Where(element=>element.Name.LocalName=="Button").ToArray();
-        Assert.Equal(8,tools.Length);
+        Assert.Equal(9,tools.Length);
         Assert.All(tools,button=>Assert.Equal("ShellRoute_Click",(string?)button.Attribute("Click")));
         Assert.Contains(tools,button=>(string?)button.Attribute("Tag")=="{x:Type pages:UcOnlinePage}");
+        Assert.Contains(tools,button=>(string?)button.Attribute("Tag")=="{x:Type pages:EmulatorsPage}");
         Assert.Equal("ShellTools_Click",(string?)Named(document,"ShellToolsButton").Attribute("Click"));
     }
     [Fact]
@@ -40,7 +41,8 @@ public sealed class ToolsSelectionTests
         Assert.Equal("0",(string?)Named(document,"LibraryHeading").Attribute("Grid.Row"));
         Assert.Equal("0,68,0,0",(string?)Named(document,"LibraryGallery").Attribute("Margin"));
         Assert.Equal("Transparent",(string?)Named(document,"LibraryFilterBar").Attribute("Background"));
-        Assert.Equal("64",(string?)document.Descendants().Single(element=>element.Name.LocalName=="VirtualizingGamePanel").Attribute("LeadingHeight"));
+        Assert.All(document.Descendants().Where(element=>element.Name.LocalName=="VirtualizingGamePanel"),
+            panel=>Assert.Equal("64",(string?)panel.Attribute("LeadingHeight")));
     }
     [Fact]
     public void UcOnlineDefersItsAdvancedFieldsUntilTheSettingsSectionIsOpened()

@@ -10,6 +10,13 @@ $portable = Join-Path $output 'portable'
 $tracker = Join-Path $output 'tracker-portable'
 $build = (Join-Path $output 'build') + '/'
 & (Join-Path $PSScriptRoot 'build-controller-host.ps1') -OutputDirectory 'tools/ControllerHost/runtime' -SourcePackage
+# Restore the vendored dlps CLI dependencies once; both app hosts bundle the result.
+$dlpsSource = Join-Path $repoRoot 'dlps_downloader'
+Push-Location $dlpsSource
+try {
+    & npm.cmd ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'dlps_downloader npm ci failed.' }
+} finally { Pop-Location }
 foreach ($variant in @(@{Path=$app;Contained='false'},@{Path=$portable;Contained='true'})) {
     & dotnet publish (Join-Path $repoRoot 'src/Steamy/Steamy.csproj') -c Release -r win-x64 --self-contained $variant.Contained -p:PublishSingleFile=false -p:RuntimeFrameworkVersion=10.0.13 -p:RestoreIgnoreFailedSources=true "-p:BaseOutputPath=$build" -o $variant.Path --verbosity minimal -m:1 -nr:false
     if ($LASTEXITCODE -ne 0) { throw 'App publishing failed.' }
@@ -17,6 +24,15 @@ foreach ($variant in @(@{Path=$app;Contained='false'},@{Path=$portable;Contained
     $tool = Join-Path $variant.Path 'Tools/DepotDownloaderMod'
     New-Item -ItemType Directory -Path $tool -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot 'tools/DepotDownloaderMod/Release/net9.0/DepotDownloaderMod.exe'),(Join-Path $repoRoot 'tools/DepotDownloaderMod/Release/net9.0/Steamy-depotdownloader-mod.json') -Destination $tool
+    # Ship the vendored dlps CLI next to Steamy.exe so AutoDetectDlpsConfig finds it.
+    $dlpsDest = Join-Path $variant.Path 'dlps_downloader'
+    New-Item -ItemType Directory -Path $dlpsDest -Force | Out-Null
+    foreach ($entry in @('src','node_modules')) {
+        Copy-Item -LiteralPath (Join-Path $dlpsSource $entry) -Destination $dlpsDest -Recurse -Force
+    }
+    foreach ($entry in @('package.json','package-lock.json','readme.md','SOURCE.md')) {
+        Copy-Item -LiteralPath (Join-Path $dlpsSource $entry) -Destination $dlpsDest -Force
+    }
 }
 # Both app hosts must work without a globally installed .NET runtime in the portable package.
 & dotnet publish (Join-Path $repoRoot 'src/PlayTimeTracker/PlayTimeTracker.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:RuntimeFrameworkVersion=10.0.13 -p:RestoreIgnoreFailedSources=true "-p:BaseOutputPath=$build" -o $tracker --verbosity minimal -m:1 -nr:false
@@ -28,7 +44,7 @@ foreach ($name in @('PlayTimeTracker.exe','PlayTimeTracker.dll','PlayTimeTracker
     Copy-Item -LiteralPath (Join-Path $tracker $name) -Destination $portable -Force
 }
 foreach ($directory in @($app,$portable)) {
-    foreach ($file in @('Steamy.exe','Steamy.dll','PlayTimeTracker.exe','PlayTimeTracker.dll','Tools/DepotDownloaderMod/DepotDownloaderMod.exe','Tools/DepotDownloaderMod/Steamy-depotdownloader-mod.json','Tools/ControllerHost/Steamy.ControllerHost.exe','Tools/ControllerHost/Steamy.ControllerHost.runtimeconfig.json','Tools/ControllerHost/Steamy-ControllerHost-source.zip','Tools/ControllerHost/COPYING','licenses/XamlAnimatedGif/LICENSE.txt')) {
+    foreach ($file in @('Steamy.exe','Steamy.dll','PlayTimeTracker.exe','PlayTimeTracker.dll','Tools/DepotDownloaderMod/DepotDownloaderMod.exe','Tools/DepotDownloaderMod/Steamy-depotdownloader-mod.json','Tools/ControllerHost/Steamy.ControllerHost.exe','Tools/ControllerHost/Steamy.ControllerHost.runtimeconfig.json','Tools/ControllerHost/Steamy-ControllerHost-source.zip','Tools/ControllerHost/COPYING','licenses/XamlAnimatedGif/LICENSE.txt','dlps_downloader/src/index.js','dlps_downloader/package.json','dlps_downloader/node_modules')) {
         if (-not (Test-Path -LiteralPath (Join-Path $directory $file))) { throw "Missing component: $file" }
     }
 }

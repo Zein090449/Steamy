@@ -134,6 +134,11 @@ public static class ServiceRegistration
         services.AddSingleton<CreamApiViewModel>();
         services.AddSingleton<GameFixesViewModel>();
         services.AddSingleton<GreenLumaViewModel>();
+        services.AddSingleton<IEmulatorInstallService>(_ => new EmulatorInstallService());
+        services.AddSingleton(_ => new DlpsCatalogService());
+        services.AddSingleton<DownloadService>();
+        services.AddSingleton<EmulatedCatalogProviderRegistry>(_ => new EmulatedCatalogProviderRegistry(new DlpsCatalogService()));
+        services.AddSingleton<EmulatorsViewModel>();
         services.AddSingleton<FamilyShareViewModel>(sp => new FamilyShareViewModel(
             sp.GetRequiredService<IAppDataStore>(),
             sp.GetRequiredService<INavigationService>(),

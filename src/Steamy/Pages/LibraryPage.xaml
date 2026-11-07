@@ -429,7 +429,7 @@
 
     <Grid x:Name="MainContentGrid" MaxWidth="1408" Margin="32,12,32,0" ClipToBounds="True">
 
-      <ItemsControl x:Name="LibraryGallery" Margin="0,68,0,0" ItemsSource="{Binding PagedCatalogItems}" KeyboardNavigation.DirectionalNavigation="Contained" VirtualizingPanel.VirtualizationMode="Recycling">
+      <ItemsControl x:Name="LibraryGallery" Margin="0,68,0,0" ItemsSource="{Binding PagedCatalogItems}" KeyboardNavigation.DirectionalNavigation="Contained" VirtualizingPanel.VirtualizationMode="Recycling" Visibility="{Binding IsSteam, Converter={StaticResource BooleanToVisibilityConverter}}">
 
         <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
 
@@ -521,7 +521,184 @@
 
       </ItemsControl>
 
-      <Border x:Name="LibraryScrollFade" Height="20" VerticalAlignment="Top" Margin="{Binding Margin, ElementName=LibraryGallery}" IsHitTestVisible="False" Background="{DynamicResource LibraryScrollFadeBrush}"/>
+                  <Grid x:Name="EmulatedPanel" Visibility="{Binding IsEmulated, Converter={StaticResource BooleanToVisibilityConverter}}" Background="Transparent">
+
+        <!-- Catalog: same grid geometry and card design as the Steam library -->
+        <ItemsControl x:Name="EmulatedGallery" Margin="0,68,0,0" ItemsSource="{Binding EmulatedCatalog}" KeyboardNavigation.DirectionalNavigation="Contained" VirtualizingPanel.VirtualizationMode="Recycling" Visibility="{Binding ShowEmulatedCatalog, Converter={StaticResource BooleanToVisibilityConverter}}">
+          <ItemsControl.Template><ControlTemplate TargetType="ItemsControl">
+            <ScrollViewer x:Name="EmulatedGalleryScroll" CanContentScroll="True" ClipToBounds="True" controls:SmoothScroll.Enabled="True" Style="{StaticResource DashboardScrollHostStyle}" HorizontalScrollBarVisibility="Disabled">
+              <ItemsPresenter />
+            </ScrollViewer>
+          </ControlTemplate></ItemsControl.Template>
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><controls:VirtualizingGamePanel MinItemWidth="{Binding CardWidth}" MaxColumns="{Binding CardColumns}" Spacing="24" RowSpacing="30" CoverRatio="1.42" FooterHeight="84" LeadingHeight="64" TrailingHeight="100" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate><DataTemplate>
+            <Button x:Name="EmulatedCard" Style="{StaticResource LibraryCoverButton}" Command="{Binding DataContext.OpenCatalogGameCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{Binding Name}" AutomationProperties.Name="{Binding Name}">
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="84" /></Grid.RowDefinitions>
+                <Border x:Name="EmulatedCover" CornerRadius="14" Background="#141418" BorderBrush="#222634" BorderThickness="1" controls:RoundedClip.Radius="14">
+                  <Grid ClipToBounds="True">
+                    <Image Source="{Binding Cover}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Border Background="#171920" Visibility="{Binding ShowCoverFallback, Converter={StaticResource BooleanToVisibilityConverter}}">
+                      <TextBlock Text="{Binding Monogram}" FontSize="44" FontWeight="SemiBold" Foreground="#70FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Border Height="64" VerticalAlignment="Bottom" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="Transparent"/><GradientStop Color="#95080B10" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,10" CornerRadius="6" Background="#B80D1016" BorderBrush="#33FFFFFF" BorderThickness="1" Padding="7,3" IsHitTestVisible="False">
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="PhoneDesktop24" FontSize="12" Foreground="#CCD2E0" Margin="0,0,5,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BadgeLabel}" FontSize="10" FontWeight="SemiBold" Foreground="#CCD2E0" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Border>
+                    <Border x:Name="EmulatedCoverFocusRing" CornerRadius="14" BorderBrush="#A0FFFFFF" BorderThickness="1.5" Opacity="0" IsHitTestVisible="False" />
+                  </Grid>
+                </Border>
+                <StackPanel Grid.Row="1" Margin="2,10,2,0">
+                  <TextBlock Text="{Binding GenreLabel}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="15" FontWeight="SemiBold" Margin="0,4,0,0" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="48" ToolTip="{Binding Name}" />
+                </StackPanel>
+              </Grid>
+            </Button>
+            <DataTemplate.Triggers>
+              <Trigger SourceName="EmulatedCard" Property="IsMouseOver" Value="True"><Setter TargetName="EmulatedCoverFocusRing" Property="Opacity" Value="0.6" /><Setter TargetName="EmulatedCover" Property="BorderBrush" Value="#4C546E" /></Trigger>
+              <Trigger SourceName="EmulatedCard" Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="EmulatedCoverFocusRing" Property="Opacity" Value="1" /></Trigger>
+            </DataTemplate.Triggers>
+          </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,18" Visibility="{Binding ShowEmulatedCatalog, Converter={StaticResource BooleanToVisibilityConverter}}">
+          <ui:Button Content="Load more" Command="{Binding LoadMoreEmulatedCommand}" Appearance="Secondary" Visibility="{Binding CanLoadMoreEmulated, Converter={StaticResource BooleanToVisibilityConverter}}" MinWidth="164" Height="40" />
+        </Grid>
+
+        <!-- Details: mirrors the Steam game details page -->
+        <Grid Visibility="{Binding ShowEmulatedDetails, Converter={StaticResource BooleanToVisibilityConverter}}">
+          <ScrollViewer x:Name="EmulatedDetailsScroll" Style="{StaticResource DashboardScrollHostStyle}" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Background="{DynamicResource GameDetailsBackgroundBrush}">
+            <StackPanel>
+              <Grid Height="330" ClipToBounds="True">
+                <!-- Blurred box art fills the hero until a wide screenshot is available -->
+                <Image Source="{Binding SelectedDlpsGame.Cover}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality">
+                  <Image.Effect><BlurEffect Radius="60" RenderingBias="Performance" /></Image.Effect>
+                </Image>
+                <Image Source="{Binding DlpsDetailsHero}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding HasDlpsDetailsHero, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <Border Background="#5906080D" />
+                <Border Height="200" VerticalAlignment="Bottom"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="Transparent"/><GradientStop Color="#F2080A10" Offset="1"/></LinearGradientBrush></Border.Background></Border>
+              </Grid>
+
+              <Grid MaxWidth="1080" HorizontalAlignment="Center" Margin="32,-120,32,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="164" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Border Width="132" Height="132" CornerRadius="22" controls:RoundedClip.Radius="22" Background="#141418" BorderBrush="#28FFFFFF" BorderThickness="1" Margin="0,0,22,0" VerticalAlignment="Center">
+                  <Grid ClipToBounds="True">
+                    <Image Source="{Binding SelectedDlpsGame.Cover}" Stretch="UniformToFill" />
+                    <Border Background="#171920" Visibility="{Binding SelectedDlpsGame.ShowCoverFallback, Converter={StaticResource BooleanToVisibilityConverter}}">
+                      <TextBlock Text="{Binding SelectedDlpsGame.Monogram}" FontSize="54" FontWeight="SemiBold" Foreground="#70FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                  </Grid>
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding SelectedDlpsGame.Name}" FontFamily="{DynamicResource SteamyDisplayFontFamily}" FontSize="36" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,8" />
+                  <TextBlock Text="{Binding DlpsDetailsGenre}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="17" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                  <WrapPanel Margin="0,13,0,0">
+                    <TextBlock Text="{Binding DlpsDetailsReleased}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" Margin="0,0,18,0" />
+                    <TextBlock Text="{Binding SelectedDlpsGame.PageUrl}" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                  </WrapPanel>
+                  <WrapPanel Margin="0,14,0,0">
+                    <ui:Button Content="Download" Icon="{ui:SymbolIcon ArrowDownload24}" Command="{Binding DlpsDownloadSelectedCommand}" Appearance="Primary" Height="42" MinWidth="136" Margin="0,0,10,0" Visibility="{Binding ShowDlpsDownloadButton, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:Button Content="Play" Icon="{ui:SymbolIcon Play24}" Command="{Binding PlaySelectedDlpsGameCommand}" Appearance="Primary" Height="42" MinWidth="136" Margin="0,0,10,0" Visibility="{Binding ShowDlpsPlayButton, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.Name="Play downloaded game" />
+                    <ui:Button Content="Cancel" Command="{Binding DlpsCancelDownloadCommand}" Appearance="Secondary" Height="42" Margin="0,0,10,0" Visibility="{Binding DlpsDownloading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:Button Content="Open in browser" Command="{Binding DlpsOpenPageCommand}" Appearance="Secondary" Height="42" Margin="0,0,10,0" />
+                    <ui:Button Content="Downloads folder" Command="{Binding DlpsOpenDownloadFolderCommand}" Appearance="Secondary" Height="42" />
+                  </WrapPanel>
+                </StackPanel>
+              </Grid>
+
+              <StackPanel MaxWidth="1080" HorizontalAlignment="Center" Margin="32,36,32,48">
+                <Border CornerRadius="14" Background="#1AF59E0B" BorderBrush="#4DF59E0B" BorderThickness="1" Padding="18" Margin="0,0,0,18" Visibility="{Binding NeedsDlpsApiKey, Converter={StaticResource BooleanToVisibilityConverter}}">
+                  <StackPanel>
+                    <TextBlock Text="Add your 1fichier API key" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="Downloads need a 1fichier API key. Paste it once and Steamy writes it into the dlps_downloader .env for you." FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,12" />
+                    <Grid>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                      <PasswordBox x:Name="DlpsApiKeyBox" Height="38" Padding="10,0" VerticalContentAlignment="Center" AutomationProperties.Name="1fichier API key" />
+                      <ui:Button Grid.Column="1" Content="Save key" Click="SaveDlpsApiKey_Click" Appearance="Primary" Height="38" Margin="10,0,0,0" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Text="Game details" FontSize="23" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="4,0,4,14" />
+                <Border CornerRadius="20" Background="{DynamicResource DetailSurfaceBrush}" BorderBrush="{DynamicResource DetailEdgeBrush}" BorderThickness="1" Padding="22">
+                  <StackPanel>
+                    <Grid Margin="0,0,0,18">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                      <StackPanel Margin="0,0,20,0">
+                        <TextBlock Text="Platform" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="{Binding DlpsDetailsGenre}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Margin="20,0,20,0">
+                        <TextBlock Text="Released" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="{Binding DlpsDetailsReleased}" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="2" Margin="20,0,0,0">
+                        <TextBlock Text="Source" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,8" />
+                        <TextBlock Text="dlps_downloader" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Grid>
+                    <Border Height="1" Background="{DynamicResource DetailEdgeBrush}" />
+                    <StackPanel Margin="0,18,0,18">
+                      <TextBlock Text="About this release" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}" Margin="0,0,0,8" />
+                      <TextBlock Text="{Binding DlpsDetailsDescription}" FontSize="14" LineHeight="23" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Visibility="{Binding HasDlpsDetailsDescription, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                      <TextBlock Text="Loading release notes…" FontSize="13" Foreground="{DynamicResource TextTertiaryBrush}" Visibility="{Binding DlpsDetailsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                      <TextBlock Text="{Binding DlpsDetailsStatus}" FontSize="12" Foreground="{DynamicResource TextTertiaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                    <Border Height="1" Background="{DynamicResource DetailEdgeBrush}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                      <ui:Button Content="Open page in browser" Command="{Binding DlpsOpenPageCommand}" Appearance="Secondary" Margin="0,0,10,0" />
+                      <ui:Button Content="Open downloads folder" Command="{Binding DlpsOpenDownloadFolderCommand}" Appearance="Secondary" />
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Text="{Binding EmulatedStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="4,16,4,0" TextWrapping="Wrap" />
+
+                <Expander Header="Download log" IsExpanded="True" Margin="0,10,0,0">
+                  <Border Background="{DynamicResource SurfaceInsetBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="10" Padding="2" Margin="0,8,0,0">
+                    <TextBox Text="{Binding DlpsLog, Mode=OneWay}" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Height="170" Background="Transparent" BorderThickness="0" FontFamily="Consolas" FontSize="11" />
+                  </Border>
+                </Expander>
+
+                <Expander Header="Downloader setup" IsExpanded="False" Margin="0,8,0,0">
+                  <StackPanel Margin="0,10,0,0">
+                    <TextBlock Text="{Binding DlpsApiKeyStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <Grid Margin="0,0,0,8">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                      <ui:TextBox Text="{Binding DlpsPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="dlps_downloader folder (contains src/index.js)" Height="36" />
+                      <ui:Button Grid.Column="1" Content="Browse" Command="{Binding DlpsPickPathCommand}" Appearance="Secondary" Margin="8,0,0,0" />
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                      <ui:TextBox Text="{Binding DlpsEnvPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText=".env file with FICHIER_API_KEY" Height="36" Margin="0,0,8,0" />
+                      <ui:TextBox Grid.Column="1" Text="{Binding DlpsDownloadDir, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Download output folder" Height="36" />
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                        <ui:Button Content="Pick .env" Command="{Binding DlpsPickEnvCommand}" Appearance="Secondary" Margin="0,0,8,0" />
+                        <ui:Button Content="Pick folder" Command="{Binding DlpsPickDownloadDirCommand}" Appearance="Secondary" />
+                      </StackPanel>
+                    </Grid>
+                    <Grid>
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                      <ui:TextBox Text="{Binding DlpsNodePath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="node" Height="36" Margin="0,0,8,0" />
+                      <TextBlock Grid.Column="1" Text="Uses Node.js and dlps_downloader; the API key stays on this PC." VerticalAlignment="Center" Foreground="{DynamicResource TextTertiaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                      <ui:Button Grid.Column="2" Content="Reload env" Command="{Binding DlpsLoadEnvCommand}" Appearance="Secondary" Margin="8,0,0,0" />
+                    </Grid>
+                  </StackPanel>
+                </Expander>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+
+          <Button Style="{StaticResource LibraryMoreButton}" Command="{Binding CloseDlpsDetailsCommand}" Width="42" Height="42" MinWidth="42" Padding="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="24,18,0,0" Panel.ZIndex="5" ToolTip="Back to catalog" AutomationProperties.Name="Back to catalog">
+            <ui:SymbolIcon Symbol="ChevronLeft24" FontSize="18" />
+          </Button>
+        </Grid>
+      </Grid>
+
+      <Border x:Name="LibraryScrollFade" Height="20" VerticalAlignment="Top" Margin="{Binding Margin, ElementName=LibraryGallery}" IsHitTestVisible="False" Background="{DynamicResource LibraryScrollFadeBrush}" Visibility="{Binding IsSteam, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
       <Button x:Name="LoadMoreButton" Content="{Binding LoadMoreLabel}" Command="{Binding LoadMoreCommand}" Visibility="{Binding CanLoadMore, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource LibraryMoreButton}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,68,0,0" MinWidth="164" Height="44">
 
@@ -529,7 +706,7 @@
 
       </Button>
 
-      <Grid x:Name="LibraryHeading" Grid.Row="0" Height="48" Margin="0,0,0,16" VerticalAlignment="Top" IsHitTestVisible="False">
+      <Grid x:Name="LibraryHeading" Grid.Row="0" Height="48" Margin="0,0,0,16" VerticalAlignment="Top" IsHitTestVisible="False" Visibility="{Binding ShowLibraryChrome, Converter={StaticResource BooleanToVisibilityConverter}}">
 
         <Grid.RenderTransform><TranslateTransform x:Name="LibraryHeadingSlide"/></Grid.RenderTransform>
 
@@ -539,7 +716,7 @@
 
       </Grid>
 
-      <Border x:Name="LibraryFilterBar" Background="Transparent" VerticalAlignment="Top" Margin="0,64,0,24" Padding="0" SizeChanged="LibraryFilterBar_SizeChanged">
+      <Border x:Name="LibraryFilterBar" Background="Transparent" VerticalAlignment="Top" Margin="0,64,0,24" Padding="0" SizeChanged="LibraryFilterBar_SizeChanged" Visibility="{Binding ShowLibraryChrome, Converter={StaticResource BooleanToVisibilityConverter}}">
 
         <Border.RenderTransform><TranslateTransform x:Name="LibraryFilterSlide"/></Border.RenderTransform>
 
@@ -559,7 +736,7 @@
                   </Style.Triggers>
                 </Style>
               </Border.Style>
-              <ui:TextBox x:Name="LibrarySearch" Foreground="{DynamicResource TextPrimaryBrush}" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Height="40" Padding="12,0,12,0" VerticalContentAlignment="Center" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Search games" Icon="{ui:SymbolIcon Search24}" FontSize="13" AutomationProperties.Name="Search games">
+              <ui:TextBox x:Name="LibrarySearch" Foreground="{DynamicResource TextPrimaryBrush}" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" Height="40" Padding="12,0,12,0" VerticalContentAlignment="Center" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{Binding SearchPlaceholder}" Icon="{ui:SymbolIcon Search24}" FontSize="13" AutomationProperties.Name="Search games">
                 <ui:TextBox.Resources>
                   <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="Transparent" />
                   <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="Transparent" />
@@ -572,17 +749,17 @@
               </ui:TextBox>
             </Border>
 
-            <Border Grid.Column="1" Height="42" CornerRadius="21" Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" Margin="12,0,0,0" Padding="3">
-
-              <ListBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Style="{StaticResource LibraryPills}" AutomationProperties.Name="Library view">
-
-                <ListBox.ItemTemplate><DataTemplate><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="{Binding}" /><Style.Triggers><DataTrigger Binding="{Binding}" Value="Browse all"><Setter Property="Text" Value="All" /></DataTrigger><DataTrigger Binding="{Binding}" Value="Your games"><Setter Property="Text" Value="Installed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></DataTemplate></ListBox.ItemTemplate>
-
-              </ListBox>
-
+            <Border Grid.Column="1" Height="42" CornerRadius="21" Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1" Margin="12,0,0,0" Padding="6,3">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ComboBox ItemsSource="{Binding Platforms}" SelectedItem="{Binding SelectedPlatform}" Width="118" Height="34" VerticalAlignment="Center" ToolTip="Library platform" AutomationProperties.Name="Library platform" />
+                <ComboBox ItemsSource="{Binding EmulatedPlatforms}" SelectedItem="{Binding SelectedEmulatedPlatform}" Width="132" Height="34" VerticalAlignment="Center" Margin="6,0,0,0" ToolTip="Emulated platform" AutomationProperties.Name="Emulated platform" Visibility="{Binding IsEmulated, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ListBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Style="{StaticResource LibraryPills}" AutomationProperties.Name="Library view" Margin="4,0,0,0" Visibility="{Binding IsSteam, Converter={StaticResource BooleanToVisibilityConverter}}">
+                  <ListBox.ItemTemplate><DataTemplate><TextBlock><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Text" Value="{Binding}" /><Style.Triggers><DataTrigger Binding="{Binding}" Value="Browse all"><Setter Property="Text" Value="All" /></DataTrigger><DataTrigger Binding="{Binding}" Value="Your games"><Setter Property="Text" Value="Installed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
             </Border>
 
-            <Grid Grid.Column="2" Margin="14,0,0,0">
+            <Grid Grid.Column="2" Margin="14,0,0,0" Visibility="{Binding IsSteam, Converter={StaticResource BooleanToVisibilityConverter}}">
 
               <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
 
@@ -649,6 +826,51 @@
           <TextBlock Text="{Binding SearchHint}" Style="{StaticResource LibraryOptionalText}" Margin="2,8,0,0" TextWrapping="Wrap" />
 
           <ProgressBar IsIndeterminate="True" Height="2" Margin="0,8,0,0" Visibility="{Binding IsCatalogLoading, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+          <!-- Your own emulated games, gathered from every installed emulator. -->
+          <StackPanel x:Name="EmulatedShelf" Margin="0,16,0,0" Visibility="{Binding HasEmulatedLocalGames, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid Margin="2,0,2,10">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Emulated games" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                <Border CornerRadius="9" Background="{DynamicResource AccentSoftBrush}" Padding="7,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding EmulatedLocalGames.Count}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+                </Border>
+              </StackPanel>
+              <ui:Button Content="Manage emulators" Command="{Binding OpenEmulatorsCommand}" Appearance="Transparent" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,4" ToolTip="Add game files or install another emulator" />
+            </Grid>
+            <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" CanContentScroll="False" PanningMode="HorizontalOnly">
+              <ItemsControl ItemsSource="{Binding EmulatedLocalGames}">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Width="252" Margin="0,0,10,0" Padding="12" CornerRadius="14" Background="{DynamicResource SurfaceElevatedBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                      <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Border Width="44" Height="44" CornerRadius="10" Background="{DynamicResource AccentSoftBrush}">
+                          <TextBlock Text="{Binding Monogram}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" />
+                          <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="{Binding EmulatorName}" FontSize="10.5" Foreground="{DynamicResource TextTertiaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <Border CornerRadius="6" Background="{DynamicResource SurfaceSubtleBrush}" Padding="5,1" Margin="6,0,0,0" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding Badge}" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                          </StackPanel>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,10,0,0">
+                          <ui:Button Content="Play" Icon="{ui:SymbolIcon Play24}" Command="{Binding PlayCommand}" Appearance="Primary" FontSize="11" Height="28" MinHeight="28" Padding="12,2" AutomationProperties.Name="{Binding Name, StringFormat='Play {0}'}" />
+                          <ui:Button Content="Details" Click="EmulatedGameDetails_Click" Tag="{Binding}" Appearance="Secondary" FontSize="11" Height="28" MinHeight="28" Padding="12,2" Margin="8,0,0,0" AutomationProperties.Name="{Binding Name, StringFormat='Details for {0}'}" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <TextBlock Text="{Binding EmulatedLocalStatus}" Style="{StaticResource LibraryOptionalText}" Margin="2,8,0,0" TextWrapping="Wrap" />
+          </StackPanel>
 
         </StackPanel>
 

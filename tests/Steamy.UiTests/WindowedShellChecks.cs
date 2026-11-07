@@ -107,7 +107,7 @@ public sealed partial class PageSmokeTests
                     PumpUntil(() => Descendants<FriendsPage>(window).Any(page => page.IsVisible));
                     friends = Descendants<FriendsPage>(window).Single();
                     Assert.Equal("Keep this draft", ((TextBox)friends.FindName("MessageComposer")).Text);
-                    ((ButtonBase)window.FindName("ShellFriendsButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    ((ButtonBase)window.FindName("ShellFriendsHubButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                     PumpDispatcher(TimeSpan.FromMilliseconds(90));
                     Assert.True(friends.IsVisible); Assert.Single(Descendants<FriendsPage>(window));
                     model.MessageDraft = "";

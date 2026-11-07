@@ -24,6 +24,7 @@ The components below retain their own licenses and distribution requirements.
 | [Steamless](https://github.com/atom0s/Steamless) 3.1.0.5 | atom0s | CC BY-NC-ND 4.0 | `Tools/Steamless/`, shipped unmodified |
 | CreamAPI `steam_api.dll` / `steam_api64.dll` (via [CreamInstaller](https://github.com/FroggMaster/CreamInstaller)) | original authors | not stated; rights stay with the authors | embedded for the DLC Unlocker |
 | [Discord Social SDK](https://docs.discord.com/developers/discord-social-sdk) 1.10.19337 (Unity plugin), including Krisp noise-suppression models | Discord Inc.; Krisp | Discord Developer/Social SDK terms; bundled third-party notices in `licenses/0-License-Notices.txt` | `tools/DiscordSocialSdk/runtime/` (official C# bindings adapted for the WPF host), copied to `Tools/Discord/` |
+| [dlps_downloader](https://github.com/jayjun911/dlps_downloader) 1.0.0 (vendored fork) | jayjun911 and contributors; maintained by the Steamy maintainer | not stated upstream; rights stay with the authors | `dlps_downloader/` source, copied next to `Steamy.exe` with npm dependencies; see `dlps_downloader/SOURCE.md` |
 
 The Steamy DepotDownloaderMod fork adds bounded cancellable retries, safe manifest
 and target handling, resilient checkpoints, graceful host cancellation, shared

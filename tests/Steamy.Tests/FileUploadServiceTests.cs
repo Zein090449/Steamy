@@ -18,6 +18,9 @@ public sealed class FileUploadServiceTests
             Assert.Equal("https://files.catbox.moe/abc123.png", await service.UploadAsync(file));
             Assert.Contains("fileupload", handler.Body);
             Assert.Contains("fileToUpload", handler.Body);
+            // Catbox sits behind Cloudflare, which drops requests that carry no User-Agent.
+            Assert.Equal("Steamy/0.8", handler.UserAgent);
+            Assert.Contains("*/*", handler.Accept);
         }
         finally { File.Delete(file); }
     }
@@ -65,9 +68,13 @@ public sealed class FileUploadServiceTests
     private sealed class Handler(HttpResponseMessage response) : HttpMessageHandler
     {
         public string Body { get; private set; } = "";
+        public string UserAgent { get; private set; } = "";
+        public string Accept { get; private set; } = "";
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Body = await request.Content!.ReadAsStringAsync(cancellationToken);
+            UserAgent = request.Headers.UserAgent.ToString();
+            Accept = string.Join(" ", request.Headers.Accept);
             return response;
         }
     }

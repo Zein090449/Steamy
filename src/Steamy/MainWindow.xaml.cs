@@ -72,7 +72,6 @@ public partial class MainWindow : FluentWindow
         Width = Math.Min(Width, Math.Max(MinWidth, SystemParameters.WorkArea.Width * .92));
         Height = Math.Min(Height, Math.Max(MinHeight, SystemParameters.WorkArea.Height * .92));
         InitializeNotificationWorkspace();
-        if (DiscordIntegration.Enabled) ShellFriendsButton.DataContext = App.Services.GetRequiredService<ViewModels.DiscordFriendsViewModel>();
         OverlayLayer.SizeChanged += (_, _) => ConstrainOverlay();
         _paneDescriptor.AddValueChanged(RootNavigation, PaneAppearanceChanged);
         _shellDownloads = new ViewModels.ShellDownloadViewModel(App.Services.GetRequiredService<IAppDataStore>(), App.Services.GetRequiredService<IArtworkService>());
@@ -81,6 +80,7 @@ public partial class MainWindow : FluentWindow
         _shellBackdrop.Changed += ShellBackdropChanged;
         App.Services.GetRequiredService<UiTranslationService>().Observe(this);
         VersionLabel.Text = $"Version {BuildStamp.Version}";
+        ApplySidebarPreference(App.Services.GetRequiredService<ISettingsService>().Load().ShowSidebar);
         var pageProvider = App.Services.GetRequiredService<INavigationViewPageProvider>();
         RootNavigation.SetPageProviderService(pageProvider is NavigationViewPageProvider provider ? provider.CreateWindowScope(RootNavigation.ReleasePage) : pageProvider);
         RootNavigation.Navigated += (_, args) =>
@@ -90,7 +90,7 @@ public partial class MainWindow : FluentWindow
             RootNavigation.Tag = args.Page is Pages.DashboardPage or Pages.GameDetailsPage ? "Home" : "Page";
             DashboardSurface = args.Page is Pages.DashboardPage home ? (Controls.DashboardBackdropView)home.FindName("DashboardBackdrop") : null;
             PageGlassSurface = args.Page as FrameworkElement;
-            if(args.Page is Pages.BetterSteamToolsPage or Pages.SteamlessPage or Pages.DenuvoActivationPage or Pages.CreamApiPage or Pages.FamilySharePage or Pages.GoldbergPage or Pages.UcOnlinePage)
+            if(args.Page is Pages.BetterSteamToolsPage or Pages.SteamlessPage or Pages.DenuvoActivationPage or Pages.CreamApiPage or Pages.FamilySharePage or Pages.GoldbergPage or Pages.UcOnlinePage or Pages.EmulatorsPage)
             {
                 Controls.SurfaceMotion.SetDuration(PageGlassSurface!,160);
                 Controls.SurfaceMotion.SetStartScale(PageGlassSurface!,1);
@@ -108,7 +108,7 @@ public partial class MainWindow : FluentWindow
             WorkspaceBackdrop.IsPageBackdrop = args.Page is not Pages.DashboardPage;
             QueueCaptionAppearance();
             Controls.PillMotion.SetSelectedIndex(ShellPillItems, args.Page is Pages.DashboardPage ? 0 : args.Page is Pages.LibraryPage or Pages.GameDetailsPage ? 1
-                : args.Page is Pages.FriendsHubPage or Pages.FriendsPage ? 2 : args.Page is Pages.DownloadsPage ? 7 : args.Page is Pages.FriendsPage or Pages.CommunityPage ? 5 : args.Page is Pages.SettingsPage ? 6
+                : args.Page is Pages.FriendsHubPage or Pages.FriendsPage or Pages.CommunityPage ? 2 : args.Page is Pages.DownloadsPage ? 6 : args.Page is Pages.SettingsPage ? 5
                 : args.Page is Pages.GameFixesPage ? 4 : 3);
             RootNavigation.IsPaneOpen = false;
         };
@@ -206,7 +206,7 @@ public partial class MainWindow : FluentWindow
         if (!DiscordIntegration.Enabled && DiscordIntegration.IsSocialPage(route)) return;
         var revision = ++_routeRevision;
         Controls.PillMotion.SetSelectedIndex(ShellPillItems, route == typeof(Pages.DashboardPage) ? 0 : route == typeof(Pages.LibraryPage) ? 1
-            : route == typeof(Pages.FriendsPage) ? 2 : route == typeof(Pages.DownloadsPage) ? 7 : route == typeof(Pages.FriendsPage) || route == typeof(Pages.CommunityPage) ? 5 : route == typeof(Pages.SettingsPage) ? 6 : route == typeof(Pages.GameFixesPage) ? 4 : 3);
+            : route == typeof(Pages.FriendsPage) || route == typeof(Pages.CommunityPage) ? 2 : route == typeof(Pages.DownloadsPage) ? 6 : route == typeof(Pages.SettingsPage) ? 5 : route == typeof(Pages.GameFixesPage) ? 4 : 3);
         if (PageGlassSurface?.GetType() == route) return;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
         { if (revision == _routeRevision && IsLoaded) RootNavigation.Navigate(route); }));
@@ -234,6 +234,18 @@ public partial class MainWindow : FluentWindow
         Controls.PillMotion.SetSelectedIndex(ShellPillItems,_toolsPreviousSelection);
         if(restoreFocus && _toolsPreviousFocus is UIElement {IsVisible:true,IsEnabled:true} element) element.Focus();
         _toolsPreviousFocus=null;
+    }
+
+    /// <summary>Applies the saved sidebar preference to the shell.</summary>
+    internal void ApplySidebarPreference()
+    {
+        ApplySidebarPreference(App.Services.GetRequiredService<ISettingsService>().Load().ShowSidebar);
+    }
+
+    internal void ApplySidebarPreference(bool show)
+    {
+        RootNavigation.IsPaneToggleVisible = show;
+        if (!show) RootNavigation.IsPaneOpen = false;
     }
 
     private async Task ApplySelectedLanguageAsync()
@@ -378,14 +390,12 @@ public partial class MainWindow : FluentWindow
             NavigationHighlight.Background = launcherLight ? LightSelection : DarkSelection;
             QueueNavigationForeground();
             WindowTitleBar.Foreground = LightBehind(WindowTitleBar) ? System.Windows.Media.Brushes.Black : System.Windows.Media.Brushes.White;
-            ShellFriendsButton.Foreground = LightBehind(ShellFriendsButton) ? System.Windows.Media.Brushes.Black : System.Windows.Media.Brushes.White;
         }
         else
         {
             foreach (var button in ShellPillItems.Children.OfType<System.Windows.Controls.Button>()) button.SetResourceReference(ForegroundProperty, "TextPrimaryBrush");
             NavigationHighlight.Background = SystemColors.HighlightBrush;
             WindowTitleBar.SetResourceReference(ForegroundProperty, "TextSecondaryBrush");
-            ShellFriendsButton.Foreground = SystemColors.WindowTextBrush;
         }
         // The dashboard body is black in both themes. WPF-UI's themed item styles
         // otherwise keep dark text when the glass drawer sits over this surface.
